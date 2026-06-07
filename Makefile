@@ -16,7 +16,13 @@ MC_INC    := $(addprefix -I$(abspath $(MCDIR))/package/,$(addsuffix /include,$(M
 MC_LIBS   := $(foreach p,$(MC_PKGS),$(MCDIR)/package/$(p)/lib$(p).a)
 MC_CFLAGS := -std=c11 -Wall -Wextra $(MC_INC)
 
-CFLAGS := -std=c11 -Wall -Wextra -Iinclude -Isrc $(MC_INC)
+LUA_REPO   := https://github.com/lua/lua.git
+LUA_COMMIT := 6e22fedb74cf0c9b6656e9fce8b7331db847c605
+LUADIR     := external/lua
+LUA_STAMP  := $(LUADIR)/.commit.$(LUA_COMMIT)
+LUALIB     := $(LUADIR)/liblua.a
+
+CFLAGS := -std=c11 -Wall -Wextra -Iinclude -Isrc $(MC_INC) -I$(LUADIR)
 LDLIBS := -lole32 -loleaut32 -lruntimeobject -luuid -lgdi32 -luser32
 
 BUILDDIR := build
@@ -35,10 +41,10 @@ include rules.mk
 .PHONY: all clean
 all: $(BIN)
 
-$(BIN): $(OBJ) $(MC_LIBS) | $(BINDIR)
-	$(LD) $(CFLAGS) -o $@ $(OBJ) -Wl,--start-group $(MC_LIBS) -Wl,--end-group $(LDLIBS)
+$(BIN): $(OBJ) $(MC_LIBS) $(LUALIB) | $(BINDIR)
+	$(LD) $(CFLAGS) -o $@ $(OBJ) -Wl,--start-group $(MC_LIBS) -Wl,--end-group $(LUALIB) $(LDLIBS)
 
-$(OBJ): | $(MC_STAMP)
+$(OBJ): | $(MC_STAMP) $(LUA_STAMP)
 
 $(BUILDDIR)/%.o: %.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -49,11 +55,21 @@ $(MCDIR)/package/$(1)/lib$(1).a: $(MC_STAMP)
 endef
 $(foreach p,$(MC_PKGS),$(eval $(call MC_BUILD_PKG,$(p))))
 
+$(LUALIB): $(LUA_STAMP)
+	$(MAKE) -C $(LUADIR) a CC=$(CC) MYCFLAGS=
+
 $(MC_STAMP):
 	$(GIT) init -q $(MCDIR)
 	$(GIT) -C $(MCDIR) config core.autocrlf false
 	$(GIT) -C $(MCDIR) fetch -q --depth 1 $(MC_REPO) $(MC_COMMIT)
 	$(GIT) -C $(MCDIR) checkout -q --detach FETCH_HEAD
+	$(TOUCH) $@
+
+$(LUA_STAMP):
+	$(GIT) init -q $(LUADIR)
+	$(GIT) -C $(LUADIR) config core.autocrlf false
+	$(GIT) -C $(LUADIR) fetch -q --depth 1 $(LUA_REPO) $(LUA_COMMIT)
+	$(GIT) -C $(LUADIR) checkout -q --detach FETCH_HEAD
 	$(TOUCH) $@
 
 $(BUILDDIR) $(BINDIR):
