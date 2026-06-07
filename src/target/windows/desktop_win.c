@@ -310,7 +310,7 @@ static void win_destroy(WM_Target *t) {
     mc_free(t->alloc, t);
 }
 
-static const WM_VDesktopSpan win_get_vdesk(WM_Target *t) {
+static WM_VDesktopSpan win_get_vdesk(WM_Target *t) {
     WM_VDesktopSpan span = { NULL, 0 };
     if (refresh(t) == WM_ERROR_OK) {
         span.desktops = MC_VECTOR_DATA(t->items);
@@ -380,12 +380,14 @@ static WM_Error win_vdesk_open(WM_Target *t, WM_VDesktop *d) {
 }
 
 static WM_VDesktop *win_vdesk_current(WM_Target *t) {
-    if (MC_VECTOR_SIZE(t->items) == 0 && refresh(t) != WM_ERROR_OK)
+    if (MC_VECTOR_SIZE(t->items) == 0 && refresh(t) != WM_ERROR_OK) {
         return NULL;
+    }
 
     IVirtualDesktop *cur = NULL;
-    if (FAILED(t->vdmi->lpVtbl->GetCurrentDesktop(t->vdmi, &cur)) || !cur)
+    if (FAILED(t->vdmi->lpVtbl->GetCurrentDesktop(t->vdmi, &cur)) || !cur) {
         return NULL;
+    }
 
     GUID id;
     memset(&id, 0, sizeof(id));
@@ -394,9 +396,11 @@ static WM_VDesktop *win_vdesk_current(WM_Target *t) {
 
     WM_VDesktop **it;
     MC_VECTOR_EACH(t->items, it) {
-        if (guid_eq(&(*it)->id, &id))
+        if (guid_eq(&(*it)->id, &id)) {
             return *it;
+        }
     }
+
     return NULL;
 }
 
