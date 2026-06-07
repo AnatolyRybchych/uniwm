@@ -367,12 +367,48 @@ static WM_Error win_vdesk_delete(WM_Target *t, WM_VDesktop *d) {
     return WM_ERROR_OK;
 }
 
+static void pump_wait(DWORD ms) {
+    DWORD start = GetTickCount();
+    while (GetTickCount() - start < ms) {
+        MSG msg;
+        while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessageA(&msg);
+        }
+
+        Sleep(5);
+    }
+}
+
+static void claim_foreground(HWND decoy) {
+    HWND foreground = GetForegroundWindow();
+    DWORD foreground_thread = GetWindowThreadProcessId(foreground, NULL);
+    DWORD this_thread = GetCurrentThreadId();
+
+    AttachThreadInput(this_thread, foreground_thread, TRUE);
+    SetForegroundWindow(decoy);
+    AttachThreadInput(this_thread, foreground_thread, FALSE);
+}
+
 static WM_Error win_vdesk_open(WM_Target *t, WM_VDesktop *d) {
     if (!d || !d->iface) {
         return WM_ERROR_INVALID_ARGUMENT;
     }
 
-    if (FAILED(t->vdmi->lpVtbl->SwitchDesktop(t->vdmi, d->iface))) {
+    HWND decoy = CreateWindowExA(0, "STATIC", "", WS_POPUP, -32000, -32000, 1, 1, NULL, NULL, GetModuleHandleA(NULL), NULL);
+    if (decoy != NULL) {
+        ShowWindow(decoy, SW_SHOWNA);
+        claim_foreground(decoy);
+        pump_wait(150);
+    }
+
+    HRESULT hr = t->vdmi->lpVtbl->SwitchDesktop(t->vdmi, d->iface);
+
+    if (decoy != NULL) {
+        DestroyWindow(decoy);
+    }
+
+    if (FAILED(hr)) {
         return WM_ERROR_UNKNOWN;
     }
 
