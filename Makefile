@@ -11,13 +11,13 @@ MC_COMMIT := 4922127d8f053d320f1e6816310cc27d21566444
 MCDIR     := external/c
 MC_STAMP  := $(MCDIR)/.commit.$(MC_COMMIT)
 
-MC_PKGS   := core geometry graphics net wm
-MC_INC    := $(addprefix -I$(abspath $(MCDIR))/package/,$(addsuffix /include,$(MC_PKGS) os))
+MC_PKGS   := core geometry graphics net os wm win32_wm
+MC_INC    := $(addprefix -I$(abspath $(MCDIR))/package/,$(addsuffix /include,$(MC_PKGS)))
 MC_LIBS   := $(foreach p,$(MC_PKGS),$(MCDIR)/package/$(p)/lib$(p).a)
 MC_CFLAGS := -std=c11 -Wall -Wextra $(MC_INC)
 
 CFLAGS := -std=c11 -Wall -Wextra -Iinclude -Isrc $(MC_INC)
-LDLIBS := -lole32 -loleaut32 -lruntimeobject -luuid
+LDLIBS := -lole32 -loleaut32 -lruntimeobject -luuid -lgdi32 -luser32
 
 BUILDDIR := build
 BINDIR   := bin
