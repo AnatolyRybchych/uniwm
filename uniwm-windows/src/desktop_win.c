@@ -320,66 +320,6 @@ static WM_VDesktopSpan win_get_vdesk(WM_Target *t) {
     return span;
 }
 
-static WM_Error win_vdesk_new(WM_Target *t, WM_VDesktop **out) {
-    if (t == NULL || out == NULL) {
-        return WM_ERROR_INVALID_ARGUMENT;
-    }
-
-    IVirtualDesktop *vd = NULL;
-    if (FAILED(t->vdmi->lpVtbl->CreateDesktop(t->vdmi, &vd)) || !vd) {
-        return WM_ERROR_UNKNOWN;
-    }
-
-    WM_VDesktop *d = wrap_desktop(t, vd, MC_VECTOR_SIZE(t->items));
-    if (!d) {
-        vd->lpVtbl->Release(vd);
-        return WM_ERROR_OUT_OF_MEMORY;
-    }
-
-    WM_Error e = push_desktop(t, d);
-    if (e != WM_ERROR_OK) {
-        destroy_desktop(t, d);
-        return e;
-    }
-
-    *out = d;
-    return WM_ERROR_OK;
-}
-
-static WM_Error win_vdesk_delete(WM_Target *t, WM_VDesktop *d) {
-    if (!d || !d->iface) {
-        return WM_ERROR_INVALID_ARGUMENT;
-    }
-
-    IVirtualDesktop *fallback = NULL;
-    WM_VDesktop **it;
-    MC_VECTOR_EACH(t->items, it) {
-        if (*it != d && (*it)->iface) {
-            fallback = (*it)->iface;
-            break;
-        }
-    }
-
-    if (FAILED(t->vdmi->lpVtbl->RemoveDesktop(t->vdmi, d->iface, fallback))) {
-        return WM_ERROR_UNKNOWN;
-    }
-
-    return WM_ERROR_OK;
-}
-
-static void pump_wait(DWORD ms) {
-    DWORD start = GetTickCount();
-    while (GetTickCount() - start < ms) {
-        MSG msg;
-        while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessageA(&msg);
-        }
-
-        Sleep(5);
-    }
-}
-
 static void claim_foreground(HWND decoy) {
     HWND foreground = GetForegroundWindow();
     DWORD foreground_thread = GetWindowThreadProcessId(foreground, NULL);
@@ -399,7 +339,7 @@ static WM_Error win_vdesk_open(WM_Target *t, WM_VDesktop *d) {
     if (decoy != NULL) {
         ShowWindow(decoy, SW_SHOWNA);
         claim_foreground(decoy);
-        pump_wait(150);
+        Sleep(150);
     }
 
     HRESULT hr = t->vdmi->lpVtbl->SwitchDesktop(t->vdmi, d->iface);
@@ -448,8 +388,6 @@ static MC_Str win_vdesk_name(WM_Target *t, const WM_VDesktop *d) {
 static const WM_TargetInterface windows_interface = {
     .init = win_init,
     .destroy = win_destroy,
-    .vdesk_new = win_vdesk_new,
-    .vdesk_delete = win_vdesk_delete,
     .get_vdesk = win_get_vdesk,
     .vdesk_open = win_vdesk_open,
     .vdesk_current = win_vdesk_current,
