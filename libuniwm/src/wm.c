@@ -2,6 +2,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include <mc/wm/key.h>
+
 #include <uniwm/wm.h>
 #include <uniwm/target.h>
 
@@ -62,6 +64,78 @@ void wm_process_fini(void) {
 
     wm_fini(&process_wm);
     process_ready = false;
+}
+
+const WM_TargetInterface *wm_default_target(void) {
+    return default_ti;
+}
+
+WM_Error wm_key_combo_from_str(const char *spec, WM_KeyCombo *out) {
+    if (spec == NULL || out == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    MC_Str s = mc_strc(spec);
+
+    WM_KeyCombo combo = {0};
+
+    const char *p = s.beg;
+    for (;;) {
+        const char *plus = p;
+        while (plus < s.end && *plus != '+') {
+            plus++;
+        }
+
+        MC_Key key = mc_key_from_str(MC_STR(p, plus));
+        if (key == MC_KEY_UNKNOWN) {
+            return WM_ERROR_INVALID_ARGUMENT;
+        }
+
+        if (combo.count >= WM_KEY_COMBO_MAX) {
+            return WM_ERROR_INVALID_ARGUMENT;
+        }
+        combo.keys[combo.count++] = key;
+
+        if (plus >= s.end) {
+            break;
+        }
+        p = plus + 1;
+    }
+
+    *out = combo;
+    return WM_ERROR_OK;
+}
+
+WM_Error wm_suppress_key(WM *wm, const WM_KeyCombo *combo) {
+    if (!wm || !wm->target_interface || !combo) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!wm->target_interface->suppress_key) {
+        return WM_ERROR_NOT_IMPLEMENTED;
+    }
+
+    return wm->target_interface->suppress_key(wm->target, combo);
+}
+
+WM_Error wm_unsuppress_key(WM *wm, const WM_KeyCombo *combo) {
+    if (!wm || !wm->target_interface || !combo) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!wm->target_interface->unsuppress_key) {
+        return WM_ERROR_NOT_IMPLEMENTED;
+    }
+
+    return wm->target_interface->unsuppress_key(wm->target, combo);
+}
+
+WM_Error wm_run(void) {
+    if (!process_ready || !process_wm.target_interface->run) {
+        return WM_ERROR_OK;
+    }
+
+    return process_wm.target_interface->run(process_wm.target);
 }
 
 WM_VDesktopSpan wm_vdesktops(WM *wm) {

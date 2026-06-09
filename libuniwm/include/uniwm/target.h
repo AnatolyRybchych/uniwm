@@ -5,6 +5,7 @@
 
 #include <uniwm/wm.h>
 #include <uniwm/vdesktop.h>
+#include <uniwm/key.h>
 
 struct WM_TargetInterface {
     WM_Error (*init)(MC_Alloc *alloc, WM_Target **target);
@@ -16,6 +17,10 @@ struct WM_TargetInterface {
     WM_VDesktop *(*vdesk_current)(WM_Target *target);
 
     MC_Str (*vdesk_name)(WM_Target *target, const WM_VDesktop *vdesk);
+
+    WM_Error (*suppress_key)(WM_Target *target, const WM_KeyCombo *combo);
+    WM_Error (*unsuppress_key)(WM_Target *target, const WM_KeyCombo *combo);
+    WM_Error (*run)(WM_Target *target);
 };
 
 #endif

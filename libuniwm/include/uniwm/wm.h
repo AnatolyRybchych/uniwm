@@ -6,6 +6,7 @@
 #include <mc/data/str.h>
 
 #include <uniwm/vdesktop.h>
+#include <uniwm/key.h>
 
 typedef struct WM WM;
 typedef struct WM_TargetInterface WM_TargetInterface;
@@ -36,5 +37,11 @@ WM_VDesktopSpan wm_vdesktops(WM *wm);
 WM_Error wm_vdesktop_switch(WM *wm, WM_VDesktop *vdesk);
 WM_VDesktop *wm_vdesktop_current(WM *wm);
 MC_Str wm_vdesktop_name(WM *wm, const WM_VDesktop *vdesk);
+
+const WM_TargetInterface *wm_default_target(void);
+WM_Error wm_key_combo_from_str(const char *spec, WM_KeyCombo *out);
+WM_Error wm_suppress_key(WM *wm, const WM_KeyCombo *combo);
+WM_Error wm_unsuppress_key(WM *wm, const WM_KeyCombo *combo);
+WM_Error wm_run(void);
 
 #endif
