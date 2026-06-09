@@ -14,7 +14,7 @@ MC_COMMIT := 4922127d8f053d320f1e6816310cc27d21566444
 MCDIR     := external/c
 MC_STAMP  := $(MCDIR)/.commit.$(MC_COMMIT)
 
-MC_PKGS   := core
+MC_PKGS   := core geometry graphics net os wm win32_wm
 MC_INC    := $(addprefix -I$(abspath $(MCDIR))/package/,$(addsuffix /include,$(MC_PKGS)))
 MC_LIBS   := $(foreach p,$(MC_PKGS),$(MCDIR)/package/$(p)/lib$(p).a)
 MC_CFLAGS := -std=c11 -Wall -Wextra $(MC_INC)
@@ -35,7 +35,7 @@ APP_DIR         := uniwm
 INCLUDES := -I$(LIBUNIWM_DIR)/include -I$(LIBUNIWMLUA_DIR)/include -I$(UNIWMWIN_DIR)/include $(MC_INC) -I$(LUADIR)
 CFLAGS   := -std=c11 -Wall -Wextra $(INCLUDES)
 
-WIN_LDLIBS := -lole32 -loleaut32 -lruntimeobject -luuid -luser32
+WIN_LDLIBS := -lole32 -loleaut32 -lruntimeobject -luuid -luser32 -lgdi32
 
 LIBUNIWM        := $(BINDIR)/libuniwm.dll
 LIBUNIWM_IMP    := $(BUILDDIR)/libuniwm.dll.a
@@ -69,8 +69,8 @@ $(UNIWMWIN_OBJ): CFLAGS += -DUNIWM_WINDOWS_BUILD
 $(BIN): $(APP_OBJ) $(LIBUNIWM_IMP) $(LIBUNIWMLUA_IMP) $(UNIWMWIN_IMP) $(LUA_IMP) $(MC_LIBS) | $(BINDIR)
 	$(LD) $(CFLAGS) -o $@ $(APP_OBJ) $(LIBUNIWMLUA_IMP) $(LIBUNIWM_IMP) $(UNIWMWIN_IMP) $(LUA_IMP) -Wl,--start-group $(MC_LIBS) -Wl,--end-group
 
-$(LIBUNIWM): $(LIBUNIWM_OBJ) | $(BINDIR)
-	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWM_OBJ) -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWM_IMP)
+$(LIBUNIWM): $(LIBUNIWM_OBJ) $(MC_LIBS) | $(BINDIR)
+	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWM_OBJ) -Wl,--start-group $(MC_LIBS) -Wl,--end-group -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWM_IMP)
 
 $(LIBUNIWM_IMP): $(LIBUNIWM) ;
 
