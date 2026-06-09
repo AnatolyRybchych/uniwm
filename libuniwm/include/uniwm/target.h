@@ -12,6 +12,7 @@ struct WM_TargetInterface {
 
     WM_VDesktopSpan (*get_vdesk)(WM_Target *target);
     WM_Error (*vdesk_open)(WM_Target *target, WM_VDesktop *vdesk);
+    WM_Error (*vdesk_create)(WM_Target *target, MC_Str name, WM_VDesktop **out);
 
     WM_VDesktop *(*vdesk_current)(WM_Target *target);
 

@@ -53,6 +53,8 @@ typedef struct IVirtualDesktopManagerInternalVtbl {
     HRESULT (STDMETHODCALLTYPE *MoveDesktop)(IVirtualDesktopManagerInternal *this, IVirtualDesktop *desktop, UINT index);
     HRESULT (STDMETHODCALLTYPE *RemoveDesktop)(IVirtualDesktopManagerInternal *this, IVirtualDesktop *remove, IVirtualDesktop *fallback);
     HRESULT (STDMETHODCALLTYPE *FindDesktop)(IVirtualDesktopManagerInternal *this, const GUID *id, IVirtualDesktop **desktop);
+    HRESULT (STDMETHODCALLTYPE *GetDesktopSwitchIncludeExcludeViews)(IVirtualDesktopManagerInternal *this, IVirtualDesktop *desktop, IObjectArray **include, IObjectArray **exclude);
+    HRESULT (STDMETHODCALLTYPE *SetDesktopName)(IVirtualDesktopManagerInternal *this, IVirtualDesktop *desktop, HSTRING name);
 } IVirtualDesktopManagerInternalVtbl;
 
 struct IVirtualDesktopManagerInternal {
@@ -108,6 +110,25 @@ static int hstring_to_utf8(HSTRING hs, char *buf, size_t cap) {
 
     buf[n] = '\0';
     return n;
+}
+
+static WM_Error utf8_to_hstring(MC_Str s, HSTRING *out) {
+    int len = (int)MC_STR_LEN(s);
+    if (len <= 0) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    wchar_t wbuf[128];
+    int n = MultiByteToWideChar(CP_UTF8, 0, s.beg, len, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0])));
+    if (n <= 0) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    if (FAILED(WindowsCreateString(wbuf, (UINT32)n, out))) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    return WM_ERROR_OK;
 }
 
 static WM_Error fetch_name(WM_Target *t, IVirtualDesktop *iface, size_t ordinal, MC_String **out) {
@@ -332,6 +353,40 @@ static WM_Error win_vdesk_open(WM_Target *t, WM_VDesktop *d) {
     return WM_ERROR_OK;
 }
 
+static WM_Error win_vdesk_create(WM_Target *t, MC_Str name, WM_VDesktop **out) {
+    if (out == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    IVirtualDesktop *vd = NULL;
+    if (FAILED(t->vdmi->lpVtbl->CreateDesktop(t->vdmi, &vd)) || !vd) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    HSTRING hs = NULL;
+    if (utf8_to_hstring(name, &hs) == WM_ERROR_OK) {
+        t->vdmi->lpVtbl->SetDesktopName(t->vdmi, vd, hs);
+        WindowsDeleteString(hs);
+    }
+
+    GUID id;
+    memset(&id, 0, sizeof(id));
+    vd->lpVtbl->GetID(vd, &id);
+    vd->lpVtbl->Release(vd);
+
+    if (refresh(t) != WM_ERROR_OK) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    WM_VDesktop *d = find_desktop(t, &id);
+    if (d == NULL) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    *out = d;
+    return WM_ERROR_OK;
+}
+
 static WM_VDesktop *win_vdesk_current(WM_Target *t) {
     if (MC_VECTOR_SIZE(t->items) == 0 && refresh(t) != WM_ERROR_OK) {
         return NULL;
@@ -367,6 +422,7 @@ static const WM_TargetInterface windows_interface = {
     .destroy = win_destroy,
     .get_vdesk = win_get_vdesk,
     .vdesk_open = win_vdesk_open,
+    .vdesk_create = win_vdesk_create,
     .vdesk_current = win_vdesk_current,
     .vdesk_name = win_vdesk_name,
 };

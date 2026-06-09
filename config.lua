@@ -1,6 +1,10 @@
 local uniwm = require("libuniwm")
 
-local desktops = uniwm.virtual_desktop.list()
+for i = #uniwm.virtual_desktop.list() + 1, 10 do
+    uniwm.virtual_desktop.create("Desktop " .. i)
+end
+
+uniwm.supress_key("SUPER_L")
 
 for i = 1, 10 do
     local combo = "SUPER_L + " .. (i % 10)

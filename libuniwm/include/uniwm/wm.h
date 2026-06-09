@@ -37,6 +37,7 @@ void wm_process_fini(void);
 
 WM_VDesktopSpan wm_vdesktops(WM *wm);
 WM_Error wm_vdesktop_switch(WM *wm, WM_VDesktop *vdesk);
+WM_Error wm_vdesktop_create(WM *wm, MC_Str name, WM_VDesktop **out);
 WM_VDesktop *wm_vdesktop_current(WM *wm);
 MC_Str wm_vdesktop_name(WM *wm, const WM_VDesktop *vdesk);
 

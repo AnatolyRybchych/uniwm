@@ -115,6 +115,18 @@ WM_Error wm_vdesktop_switch(WM *wm, WM_VDesktop *vdesk) {
     return wm->target_interface->vdesk_open(wm->target, vdesk);
 }
 
+WM_Error wm_vdesktop_create(WM *wm, MC_Str name, WM_VDesktop **out) {
+    if (!wm || !out) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!wm->target_interface->vdesk_create) {
+        return WM_ERROR_NOT_IMPLEMENTED;
+    }
+
+    return wm->target_interface->vdesk_create(wm->target, name, out);
+}
+
 WM_VDesktop *wm_vdesktop_current(WM *wm) {
     return wm->target_interface->vdesk_current(wm->target);
 }

@@ -66,6 +66,27 @@ static int l_vdesk_list(lua_State *L) {
     return 1;
 }
 
+static int l_vdesk_create(lua_State *L) {
+    const char *name = luaL_checkstring(L, 1);
+    WM *wm = current_wm(L);
+
+    WM_VDesktop *d = NULL;
+    if (wm_vdesktop_create(wm, mc_strc(name), &d) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm.virtual_desktop.create: failed");
+    }
+
+    WM_VDesktopSpan span = wm_vdesktops(wm);
+    for (size_t i = 0; i < span.count; i++) {
+        if (span.desktops[i] == d) {
+            push_vdesk(L, wm, span, i);
+            return 1;
+        }
+    }
+
+    lua_pushnil(L);
+    return 1;
+}
+
 static int l_vdesk_current(lua_State *L) {
     WM *wm = current_wm(L);
     WM_VDesktopSpan span = wm_vdesktops(wm);
@@ -181,6 +202,7 @@ static int luaopen_libuniwm(lua_State *L) {
     static const luaL_Reg vdesk_fns[] = {
         { "list", l_vdesk_list },
         { "current", l_vdesk_current },
+        { "create", l_vdesk_create },
         { NULL, NULL },
     };
 
