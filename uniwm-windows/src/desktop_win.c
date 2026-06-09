@@ -13,6 +13,11 @@
 #include <mc/data/vector.h>
 #include <mc/data/str.h>
 #include <mc/data/string.h>
+#include <mc/time.h>
+#include <mc/wm/wm.h>
+#include <mc/wm/event.h>
+#include <mc/wm/key.h>
+#include <mc/win32_wm/wm.h>
 
 #include <uniwm/wm.h>
 #include <uniwm/target.h>
@@ -88,6 +93,8 @@ struct WM_Target {
     IVirtualDesktopManagerInternal *vdmi;
 
     WM_VDesktopList *items;
+
+    MC_WM *input;
 };
 
 static int guid_eq(const GUID *a, const GUID *b) {
@@ -292,6 +299,10 @@ static void win_destroy(WM_Target *t) {
         return;
     }
 
+    if (t->input) {
+        mc_wm_destroy(t->input);
+    }
+
     WM_VDesktop **it;
     MC_VECTOR_EACH(t->items, it) {
         destroy_desktop(t, *it);
@@ -385,6 +396,109 @@ static MC_Str win_vdesk_name(WM_Target *t, const WM_VDesktop *d) {
     return mc_string_str(d ? d->name : NULL);
 }
 
+#define SUPPRESS_MAX 128
+
+static WM_KeyCombo suppressions[SUPPRESS_MAX];
+static int suppression_count = 0;
+static bool key_down[MC_KEY_MAX];
+
+static bool suppress_cb(MC_TargetWM *wm, MC_Key key, bool down) {
+    (void)wm;
+
+    if (key < MC_KEY_MAX) {
+        key_down[key] = down;
+    }
+
+    for (int i = 0; i < suppression_count; i++) {
+        WM_KeyCombo *c = &suppressions[i];
+        if (c->count == 0 || key != c->keys[c->count - 1]) {
+            continue;
+        }
+
+        bool held = true;
+        for (size_t m = 0; m + 1 < c->count; m++) {
+            MC_Key mod = c->keys[m];
+            if (mod >= MC_KEY_MAX || !key_down[mod]) {
+                held = false;
+                break;
+            }
+        }
+
+        if (held) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static WM_Error win_suppress_key(WM_Target *t, const WM_KeyCombo *combo) {
+    if (t == NULL || combo == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (t->input == NULL) {
+        if (mc_wm_init(&t->input, mc_win32_wm_vtab) != MCE_OK) {
+            t->input = NULL;
+            return WM_ERROR_UNKNOWN;
+        }
+
+        mc_wm_request_events(t->input, MC_WM_EVENTS_GLOBAL_KEYBOARD);
+        mc_wm_win32_set_keyboard_suppress(mc_wm_get_target(t->input), suppress_cb);
+    }
+
+    if (suppression_count >= SUPPRESS_MAX) {
+        return WM_ERROR_OUT_OF_MEMORY;
+    }
+    suppressions[suppression_count++] = *combo;
+
+    return WM_ERROR_OK;
+}
+
+static bool combo_eq(const WM_KeyCombo *a, const WM_KeyCombo *b) {
+    if (a->count != b->count) {
+        return false;
+    }
+
+    for (size_t i = 0; i < a->count; i++) {
+        if (a->keys[i] != b->keys[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static WM_Error win_unsuppress_key(WM_Target *t, const WM_KeyCombo *combo) {
+    if (t == NULL || combo == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    for (int j = 0; j < suppression_count;) {
+        if (combo_eq(&suppressions[j], combo)) {
+            suppressions[j] = suppressions[--suppression_count];
+        } else {
+            j++;
+        }
+    }
+
+    return WM_ERROR_OK;
+}
+
+static WM_Error win_run(WM_Target *t) {
+    if (t == NULL || t->input == NULL) {
+        return WM_ERROR_OK;
+    }
+
+    for (;;) {
+        MC_WMEvent event;
+        while (mc_wm_poll_event(t->input, &event) == MCE_OK) {
+        }
+
+        mc_sleep(&(MC_Time){.nsec = 16000000});
+    }
+}
+
 static const WM_TargetInterface windows_interface = {
     .init = win_init,
     .destroy = win_destroy,
@@ -392,6 +506,9 @@ static const WM_TargetInterface windows_interface = {
     .vdesk_open = win_vdesk_open,
     .vdesk_current = win_vdesk_current,
     .vdesk_name = win_vdesk_name,
+    .suppress_key = win_suppress_key,
+    .unsuppress_key = win_unsuppress_key,
+    .run = win_run,
 };
 
 const WM_TargetInterface *const uniwm_windows_target = &windows_interface;
