@@ -1,8 +1,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <mc/data/alloc.h>
-
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
@@ -36,7 +34,7 @@ int main(int argc, char **argv) {
 
     const char *script = parse_script(argc, argv);
 
-    wm_set_default(uniwm_windows_target, &mc_alloc_malloc);
+    wm_set_default(uniwm_windows_target);
 
     lua_State *L = luaL_newstate();
     if (L == NULL) {

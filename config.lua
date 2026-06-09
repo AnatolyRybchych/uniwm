@@ -1,13 +1,14 @@
 local uniwm = require("libuniwm")
 
 local desktops = uniwm.virtual_desktop.list()
-local current = uniwm.virtual_desktop.current()
 
-print(string.format("uniwm: %d desktop(s)", #desktops))
-
-for i, vdesk in ipairs(desktops) do
-    local marker = (current and vdesk.name == current.name) and " (current)" or ""
-    print(string.format("  %d. %s%s", i, vdesk.name, marker))
+for i = 1, 10 do
+    local combo = "SUPER_L + " .. (i % 10)
+    uniwm.supress_key(combo)
+    uniwm.register_keybind(combo, function()
+        local list = uniwm.virtual_desktop.list()
+        if list[i] then
+            list[i]:switch()
+        end
+    end)
 end
-
-uniwm.supress_key("SUPER_L")
