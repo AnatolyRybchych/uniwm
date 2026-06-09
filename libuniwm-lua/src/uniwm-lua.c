@@ -6,6 +6,7 @@
 #include <mc/data/str.h>
 
 #include <uniwm/wm.h>
+#include <uniwm/target.h>
 
 static WM *current_wm(lua_State *L) {
     WM *wm = wm_process();
@@ -74,6 +75,36 @@ static int l_vdesk_current(lua_State *L) {
     return 1;
 }
 
+static int l_supress_key(lua_State *L) {
+    const char *spec = luaL_checkstring(L, 1);
+
+    WM_KeyCombo combo;
+    if (wm_key_combo_from_str(spec, &combo) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm.supress_key: invalid key spec \"%s\"", spec);
+    }
+
+    if (wm_suppress_key(current_wm(L), &combo) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm.supress_key: failed");
+    }
+
+    return 0;
+}
+
+static int l_unsupress_key(lua_State *L) {
+    const char *spec = luaL_checkstring(L, 1);
+
+    WM_KeyCombo combo;
+    if (wm_key_combo_from_str(spec, &combo) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm.unsupress_key: invalid key spec \"%s\"", spec);
+    }
+
+    if (wm_unsuppress_key(current_wm(L), &combo) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm.unsupress_key: failed");
+    }
+
+    return 0;
+}
+
 static int luaopen_libuniwm(lua_State *L) {
     static const luaL_Reg vdesk_fns[] = {
         { "list", l_vdesk_list },
@@ -81,10 +112,20 @@ static int luaopen_libuniwm(lua_State *L) {
         { NULL, NULL },
     };
 
-    lua_createtable(L, 0, 1);
+    lua_createtable(L, 0, 3);
 
     luaL_newlib(L, vdesk_fns);
     lua_setfield(L, -2, "virtual_desktop");
+
+    const WM_TargetInterface *ti = wm_default_target();
+    if (ti && ti->suppress_key) {
+        lua_pushcfunction(L, l_supress_key);
+        lua_setfield(L, -2, "supress_key");
+    }
+    if (ti && ti->unsuppress_key) {
+        lua_pushcfunction(L, l_unsupress_key);
+        lua_setfield(L, -2, "unsupress_key");
+    }
 
     return 1;
 }
