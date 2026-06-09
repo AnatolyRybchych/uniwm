@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <mc/wm/key.h>
+#include <mc/data/alloc.h>
 
 #include <uniwm/wm.h>
 #include <uniwm/target.h>
@@ -30,14 +31,14 @@ void wm_fini(WM *wm) {
     wm->target = NULL;
 }
 
+MC_Alloc *wm_allocator = &mc_alloc_malloc;
+
 static const WM_TargetInterface *default_ti = NULL;
-static MC_Alloc *default_alloc = NULL;
 static WM process_wm;
 static bool process_ready = false;
 
-void wm_set_default(const WM_TargetInterface *ti, MC_Alloc *alloc) {
+void wm_set_default(const WM_TargetInterface *ti) {
     default_ti = ti;
-    default_alloc = alloc;
 }
 
 WM *wm_process(void) {
@@ -45,11 +46,11 @@ WM *wm_process(void) {
         return &process_wm;
     }
 
-    if (default_ti == NULL || default_alloc == NULL) {
+    if (default_ti == NULL) {
         return NULL;
     }
 
-    if (wm_init(&process_wm, default_ti, default_alloc) != WM_ERROR_OK) {
+    if (wm_init(&process_wm, default_ti, wm_allocator) != WM_ERROR_OK) {
         return NULL;
     }
 
@@ -64,10 +65,6 @@ void wm_process_fini(void) {
 
     wm_fini(&process_wm);
     process_ready = false;
-}
-
-const WM_TargetInterface *wm_default_target(void) {
-    return default_ti;
 }
 
 WM_Error wm_key_combo_from_str(const char *spec, WM_KeyCombo *out) {
@@ -104,38 +101,6 @@ WM_Error wm_key_combo_from_str(const char *spec, WM_KeyCombo *out) {
 
     *out = combo;
     return WM_ERROR_OK;
-}
-
-WM_Error wm_suppress_key(WM *wm, const WM_KeyCombo *combo) {
-    if (!wm || !wm->target_interface || !combo) {
-        return WM_ERROR_INVALID_ARGUMENT;
-    }
-
-    if (!wm->target_interface->suppress_key) {
-        return WM_ERROR_NOT_IMPLEMENTED;
-    }
-
-    return wm->target_interface->suppress_key(wm->target, combo);
-}
-
-WM_Error wm_unsuppress_key(WM *wm, const WM_KeyCombo *combo) {
-    if (!wm || !wm->target_interface || !combo) {
-        return WM_ERROR_INVALID_ARGUMENT;
-    }
-
-    if (!wm->target_interface->unsuppress_key) {
-        return WM_ERROR_NOT_IMPLEMENTED;
-    }
-
-    return wm->target_interface->unsuppress_key(wm->target, combo);
-}
-
-WM_Error wm_run(void) {
-    if (!process_ready || !process_wm.target_interface->run) {
-        return WM_ERROR_OK;
-    }
-
-    return process_wm.target_interface->run(process_wm.target);
 }
 
 WM_VDesktopSpan wm_vdesktops(WM *wm) {
