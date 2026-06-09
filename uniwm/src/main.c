@@ -48,6 +48,9 @@ int main(int argc, char **argv) {
     uniwm_lua_open(L);
 
     int rc = run_script(L, script);
+    if (rc == 0) {
+        wm_run();
+    }
 
     lua_close(L);
     wm_process_fini();

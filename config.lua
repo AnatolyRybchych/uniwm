@@ -10,4 +10,4 @@ for i, vdesk in ipairs(desktops) do
     print(string.format("  %d. %s%s", i, vdesk.name, marker))
 end
 
-desktops[1]:switch()
+uniwm.supress_key("SUPER_L")
