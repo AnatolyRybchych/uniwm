@@ -23,14 +23,16 @@ typedef enum WM_Error {
 struct WM {
     const WM_TargetInterface *target_interface;
     WM_Target *target;
-
-    WM_VDesktopList *vdesktops;
 };
 
 WM_Error wm_init(WM *wm, const WM_TargetInterface *ti, MC_Alloc *alloc);
 void wm_fini(WM *wm);
+
+void wm_set_default(const WM_TargetInterface *ti, MC_Alloc *alloc);
+WM *wm_process(void);
+void wm_process_fini(void);
+
 WM_VDesktopSpan wm_vdesktops(WM *wm);
-WM_Error wm_vdesktop_create(WM *wm, WM_VDesktop **out);
 WM_Error wm_vdesktop_switch(WM *wm, WM_VDesktop *vdesk);
 WM_VDesktop *wm_vdesktop_current(WM *wm);
 MC_Str wm_vdesktop_name(WM *wm, const WM_VDesktop *vdesk);

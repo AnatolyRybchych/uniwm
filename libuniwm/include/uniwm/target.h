@@ -10,8 +10,6 @@ struct WM_TargetInterface {
     WM_Error (*init)(MC_Alloc *alloc, WM_Target **target);
     void (*destroy)(WM_Target *target);
 
-    WM_Error (*vdesk_new)(WM_Target *target, WM_VDesktop **vdesk);
-    WM_Error (*vdesk_delete)(WM_Target *target, WM_VDesktop *vdesk);
     WM_VDesktopSpan (*get_vdesk)(WM_Target *target);
     WM_Error (*vdesk_open)(WM_Target *target, WM_VDesktop *vdesk);
 
