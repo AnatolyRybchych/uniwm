@@ -46,9 +46,9 @@ typedef struct IVirtualDesktopManagerInternalVtbl {
     HRESULT (STDMETHODCALLTYPE *CanViewMoveDesktops)(IVirtualDesktopManagerInternal *this, IUnknown *view, int *can_move);
     HRESULT (STDMETHODCALLTYPE *GetCurrentDesktop)(IVirtualDesktopManagerInternal *this, IVirtualDesktop **desktop);
     HRESULT (STDMETHODCALLTYPE *GetDesktops)(IVirtualDesktopManagerInternal *this, IObjectArray **desktops);
-    HRESULT (STDMETHODCALLTYPE *GetAllCurrentDesktops)(IVirtualDesktopManagerInternal *this, IObjectArray **desktops);
     HRESULT (STDMETHODCALLTYPE *GetAdjacentDesktop)(IVirtualDesktopManagerInternal *this, IVirtualDesktop *from, int direction, IVirtualDesktop **desktop);
     HRESULT (STDMETHODCALLTYPE *SwitchDesktop)(IVirtualDesktopManagerInternal *this, IVirtualDesktop *desktop);
+    HRESULT (STDMETHODCALLTYPE *SwitchDesktopAndMoveForegroundView)(IVirtualDesktopManagerInternal *this, IVirtualDesktop *desktop);
     HRESULT (STDMETHODCALLTYPE *CreateDesktop)(IVirtualDesktopManagerInternal *this, IVirtualDesktop **desktop);
     HRESULT (STDMETHODCALLTYPE *MoveDesktop)(IVirtualDesktopManagerInternal *this, IVirtualDesktop *desktop, UINT index);
     HRESULT (STDMETHODCALLTYPE *RemoveDesktop)(IVirtualDesktopManagerInternal *this, IVirtualDesktop *remove, IVirtualDesktop *fallback);
@@ -320,35 +320,12 @@ static WM_VDesktopSpan win_get_vdesk(WM_Target *t) {
     return span;
 }
 
-static void claim_foreground(HWND decoy) {
-    HWND foreground = GetForegroundWindow();
-    DWORD foreground_thread = GetWindowThreadProcessId(foreground, NULL);
-    DWORD this_thread = GetCurrentThreadId();
-
-    AttachThreadInput(this_thread, foreground_thread, TRUE);
-    SetForegroundWindow(decoy);
-    AttachThreadInput(this_thread, foreground_thread, FALSE);
-}
-
 static WM_Error win_vdesk_open(WM_Target *t, WM_VDesktop *d) {
     if (!d || !d->iface) {
         return WM_ERROR_INVALID_ARGUMENT;
     }
 
-    HWND decoy = CreateWindowExA(0, "STATIC", "", WS_POPUP, -32000, -32000, 1, 1, NULL, NULL, GetModuleHandleA(NULL), NULL);
-    if (decoy != NULL) {
-        ShowWindow(decoy, SW_SHOWNA);
-        claim_foreground(decoy);
-        Sleep(150);
-    }
-
-    HRESULT hr = t->vdmi->lpVtbl->SwitchDesktop(t->vdmi, d->iface);
-
-    if (decoy != NULL) {
-        DestroyWindow(decoy);
-    }
-
-    if (FAILED(hr)) {
+    if (FAILED(t->vdmi->lpVtbl->SwitchDesktop(t->vdmi, d->iface))) {
         return WM_ERROR_UNKNOWN;
     }
 
