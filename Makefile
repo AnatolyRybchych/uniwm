@@ -19,20 +19,22 @@ MC_INC    := $(addprefix -I$(abspath $(MCDIR))/package/,$(addsuffix /include,$(M
 MC_LIBS   := $(foreach p,$(MC_PKGS),$(MCDIR)/package/$(p)/lib$(p).a)
 MC_CFLAGS := -std=c11 -Wall -Wextra $(MC_INC)
 
-LUA_REPO   := https://github.com/lua/lua.git
-LUA_COMMIT := 6e22fedb74cf0c9b6656e9fce8b7331db847c605
-LUADIR     := external/lua
-LUA_STAMP  := $(LUADIR)/.commit.$(LUA_COMMIT)
+LUADIR     := $(MCDIR)/package/lua
+LUA_SRCDIR := $(LUADIR)/lua
 LUALIB     := $(LUADIR)/liblua.a
 LUADLL     := $(BINDIR)/lua54.dll
 LUA_IMP    := $(BUILDDIR)/liblua54.dll.a
+
+WMLUA_DIR  := $(MCDIR)/package/wm-lua
+WMLUA_SRC  := $(WMLUA_DIR)/src/wm-lua.c
+WMLUA_OBJ  := $(BUILDDIR)/wm-lua.o
 
 LIBUNIWM_DIR    := libuniwm
 LIBUNIWMLUA_DIR := libuniwm-lua
 UNIWMWIN_DIR    := uniwm-windows
 APP_DIR         := uniwm
 
-INCLUDES := -I$(LIBUNIWM_DIR)/include -I$(LIBUNIWMLUA_DIR)/include -I$(UNIWMWIN_DIR)/include $(MC_INC) -I$(LUADIR)
+INCLUDES := -I$(LIBUNIWM_DIR)/include -I$(LIBUNIWMLUA_DIR)/include -I$(UNIWMWIN_DIR)/include $(MC_INC) -I$(WMLUA_DIR)/include -I$(LUA_SRCDIR)
 CFLAGS   := -std=c11 -Wall -Wextra $(INCLUDES)
 
 WIN_LDLIBS := -lole32 -loleaut32 -lruntimeobject -luuid -luser32 -lgdi32
@@ -55,9 +57,9 @@ LIBUNIWMLUA_OBJ := $(addprefix $(BUILDDIR)/,$(notdir $(LIBUNIWMLUA_SRC:.c=.o)))
 UNIWMWIN_OBJ    := $(addprefix $(BUILDDIR)/,$(notdir $(UNIWMWIN_SRC:.c=.o)))
 APP_OBJ         := $(addprefix $(BUILDDIR)/,$(notdir $(APP_SRC:.c=.o)))
 
-OBJ := $(LIBUNIWM_OBJ) $(LIBUNIWMLUA_OBJ) $(UNIWMWIN_OBJ) $(APP_OBJ)
+OBJ := $(LIBUNIWM_OBJ) $(LIBUNIWMLUA_OBJ) $(WMLUA_OBJ) $(UNIWMWIN_OBJ) $(APP_OBJ)
 
-vpath %.c $(LIBUNIWM_DIR)/src $(LIBUNIWMLUA_DIR)/src $(UNIWMWIN_DIR)/src $(APP_DIR)/src
+vpath %.c $(LIBUNIWM_DIR)/src $(LIBUNIWMLUA_DIR)/src $(WMLUA_DIR)/src $(UNIWMWIN_DIR)/src $(APP_DIR)/src
 
 include rules.mk
 
@@ -70,7 +72,7 @@ $(BIN): $(APP_OBJ) $(LIBUNIWM_IMP) $(LIBUNIWMLUA_IMP) $(UNIWMWIN_IMP) $(LUA_IMP)
 	$(LD) $(CFLAGS) -o $@ $(APP_OBJ) $(LIBUNIWMLUA_IMP) $(LIBUNIWM_IMP) $(UNIWMWIN_IMP) $(LUA_IMP) -Wl,--start-group $(MC_LIBS) -Wl,--end-group
 
 $(LIBUNIWM): $(LIBUNIWM_OBJ) $(MC_LIBS) | $(BINDIR)
-	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWM_OBJ) -Wl,--start-group $(MC_LIBS) -Wl,--end-group -luser32 -lgdi32 -Wl,--exclude-libs,ALL -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWM_IMP)
+	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWM_OBJ) -Wl,--whole-archive $(MC_LIBS) -Wl,--no-whole-archive -luser32 -lgdi32 -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWM_IMP)
 
 $(LIBUNIWM_IMP): $(LIBUNIWM) ;
 
@@ -79,8 +81,8 @@ $(UNIWMWIN): $(UNIWMWIN_OBJ) $(MC_LIBS) | $(BINDIR)
 
 $(UNIWMWIN_IMP): $(UNIWMWIN) ;
 
-$(LIBUNIWMLUA): $(LIBUNIWMLUA_OBJ) $(LIBUNIWM_IMP) $(LUA_IMP) $(MC_LIBS) | $(BINDIR)
-	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWMLUA_OBJ) $(LIBUNIWM_IMP) $(LUA_IMP) -Wl,--start-group $(MC_LIBS) -Wl,--end-group -Wl,--exclude-libs,ALL -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWMLUA_IMP)
+$(LIBUNIWMLUA): $(LIBUNIWMLUA_OBJ) $(WMLUA_OBJ) $(LIBUNIWM_IMP) $(LUA_IMP) | $(BINDIR)
+	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWMLUA_OBJ) $(WMLUA_OBJ) $(LIBUNIWM_IMP) $(LUA_IMP) -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWMLUA_IMP)
 
 $(LIBUNIWMLUA_IMP): $(LIBUNIWMLUA) ;
 
@@ -89,7 +91,7 @@ $(LUADLL): $(LUALIB) | $(BINDIR)
 
 $(LUA_IMP): $(LUADLL) ;
 
-$(OBJ): | $(MC_STAMP) $(LUA_STAMP)
+$(OBJ): | $(MC_STAMP) $(LUALIB)
 
 $(BUILDDIR)/%.o: %.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -100,21 +102,14 @@ $(MCDIR)/package/$(1)/lib$(1).a: $(MC_STAMP)
 endef
 $(foreach p,$(MC_PKGS),$(eval $(call MC_BUILD_PKG,$(p))))
 
-$(LUALIB): $(LUA_STAMP)
-	$(MAKE) -C $(LUADIR) a CC=$(CC) MYCFLAGS=
+$(LUALIB): | $(MC_STAMP)
+	$(MAKE) -C $(LUADIR) liblua.a CC=$(CC)
 
 $(MC_STAMP):
 	$(GIT) init -q $(MCDIR)
 	$(GIT) -C $(MCDIR) config core.autocrlf false
 	$(GIT) -C $(MCDIR) fetch -q --depth 1 $(MC_REPO) $(MC_COMMIT)
 	$(GIT) -C $(MCDIR) checkout -q --detach FETCH_HEAD
-	$(TOUCH) $@
-
-$(LUA_STAMP):
-	$(GIT) init -q $(LUADIR)
-	$(GIT) -C $(LUADIR) config core.autocrlf false
-	$(GIT) -C $(LUADIR) fetch -q --depth 1 $(LUA_REPO) $(LUA_COMMIT)
-	$(GIT) -C $(LUADIR) checkout -q --detach FETCH_HEAD
 	$(TOUCH) $@
 
 $(BUILDDIR) $(BINDIR):
