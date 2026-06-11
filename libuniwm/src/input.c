@@ -5,6 +5,7 @@
 #include <mc/wm/wm.h>
 #include <mc/wm/event.h>
 #include <mc/wm/key.h>
+#include <mc/wm/resolver.h>
 #include <mc/win32_wm/wm.h>
 
 #include <uniwm/wm.h>
@@ -76,7 +77,7 @@ static WM_Error ensure_input(void) {
         return WM_ERROR_OK;
     }
 
-    if (mc_wm_init(&input, mc_win32_wm_vtab) != MCE_OK) {
+    if (mc_wm_resolve(&input) != MCE_OK) {
         input = NULL;
         return WM_ERROR_UNKNOWN;
     }

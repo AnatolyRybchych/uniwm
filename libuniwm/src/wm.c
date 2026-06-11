@@ -3,6 +3,8 @@
 #include <string.h>
 
 #include <mc/wm/key.h>
+#include <mc/wm/resolver.h>
+#include <mc/win32_wm/wm.h>
 #include <mc/data/alloc.h>
 
 #include <uniwm/wm.h>
@@ -39,6 +41,8 @@ static bool process_ready = false;
 
 void wm_set_default(const WM_TargetInterface *ti) {
     default_ti = ti;
+
+    mc_wm_resolver_register(mc_win32_wm_vtab);
 }
 
 WM *wm_process(void) {
