@@ -8,14 +8,17 @@ uniwm.supress_key("SUPER_L")
 
 local mcwm = require("mc.wm")
 local wm = mcwm.resolve()
-local window = wm:create_window({ title = "Test", size = { width = 640, height = 480 } })
+
+for _, window in ipairs(wm:get_all_windows()) do
+    print(string.format('[%s]\t%s', window:get_state(), window:get_title()))
+end
 
 uniwm.supress_key("SUPER_L + SHIFT_L + C")
 uniwm.register_keybind("SUPER_L + SHIFT_L + C", function()
-    local focused = wm:get_focused_window()
-    if focused then
-        print(string.format("Close window '%s' [%s]", focused:get_title(), focused:get_state()))
-        focused:close()
+    local hovered = wm:get_hovered_window()
+    if hovered then
+        print(string.format("Close window '%s' [%s]", hovered:get_title(), hovered:get_state()))
+        hovered:close()
     end
 end)
 
