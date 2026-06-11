@@ -7,6 +7,7 @@
 
 #include <mc/data/str.h>
 #include <mc/data/alloc.h>
+#include <mc/wm-lua/wm-lua.h>
 
 #include <uniwm/wm.h>
 
@@ -230,6 +231,8 @@ WM_Error uniwm_lua_open(lua_State *L) {
 
     luaL_requiref(L, "libuniwm", luaopen_libuniwm, 0);
     lua_pop(L, 1);
+
+    mc_wm_lua_open(L, NULL);
 
     return WM_ERROR_OK;
 }
