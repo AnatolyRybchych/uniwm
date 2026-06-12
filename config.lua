@@ -85,6 +85,10 @@ for i = 1, 10 do
     uniwm.register_keybind(switch_vdesk_hotkey, function()
         if list[i] then
             list[i]:switch()
+            local window = wm:get_hovered_window()
+            if window then
+                window:focus()
+            end
         end
     end)
 
