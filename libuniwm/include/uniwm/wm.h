@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include <mc/data/str.h>
+#include <mc/wm/wm.h>
 
 #include <uniwm/vdesktop.h>
 #include <uniwm/key.h>
@@ -40,6 +41,8 @@ WM_Error wm_vdesktop_switch(WM *wm, WM_VDesktop *vdesk);
 WM_Error wm_vdesktop_create(WM *wm, MC_Str name, WM_VDesktop **out);
 WM_VDesktop *wm_vdesktop_current(WM *wm);
 MC_Str wm_vdesktop_name(WM *wm, const WM_VDesktop *vdesk);
+WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_WindowRef *window, void *ctx), void *ctx);
+WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out);
 
 WM_Error wm_key_combo_from_str(const char *spec, WM_KeyCombo *out);
 WM_Error wm_suppress_key(WM *wm, const WM_KeyCombo *combo);

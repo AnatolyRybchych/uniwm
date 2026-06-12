@@ -77,6 +77,29 @@ static const IID WM_IID_IVirtualDesktop = {
     0x3F07F4BE, 0xB107, 0x441A,
     { 0xAF, 0x0F, 0x39, 0xD8, 0x25, 0x29, 0x07, 0x2C } };
 
+typedef struct IVirtualDesktopManager IVirtualDesktopManager;
+
+typedef struct IVirtualDesktopManagerVtbl {
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(IVirtualDesktopManager *this, REFIID riid, void **ppv);
+    ULONG   (STDMETHODCALLTYPE *AddRef)(IVirtualDesktopManager *this);
+    ULONG   (STDMETHODCALLTYPE *Release)(IVirtualDesktopManager *this);
+    HRESULT (STDMETHODCALLTYPE *IsWindowOnCurrentVirtualDesktop)(IVirtualDesktopManager *this, HWND hwnd, BOOL *on_current);
+    HRESULT (STDMETHODCALLTYPE *GetWindowDesktopId)(IVirtualDesktopManager *this, HWND hwnd, GUID *id);
+    HRESULT (STDMETHODCALLTYPE *MoveWindowToDesktop)(IVirtualDesktopManager *this, HWND hwnd, const GUID *id);
+} IVirtualDesktopManagerVtbl;
+
+struct IVirtualDesktopManager {
+    const IVirtualDesktopManagerVtbl *lpVtbl;
+};
+
+static const CLSID WM_CLSID_VirtualDesktopManager = {
+    0xAA509086, 0x5CA9, 0x4C25,
+    { 0x8F, 0x95, 0x58, 0x9D, 0x3C, 0x07, 0xB4, 0x8A } };
+
+static const IID WM_IID_IVirtualDesktopManager = {
+    0xA5CD92FF, 0x29BE, 0x454C,
+    { 0x8D, 0x04, 0xD8, 0x28, 0x79, 0xFB, 0x3F, 0x1B } };
+
 struct WM_VDesktop {
     IVirtualDesktop *iface;
     GUID id;
@@ -88,6 +111,7 @@ struct WM_Target {
     MC_Alloc *alloc;
     IServiceProvider *sp;
     IVirtualDesktopManagerInternal *vdmi;
+    IVirtualDesktopManager *vdm;
 
     WM_VDesktopList *items;
 };
@@ -304,6 +328,11 @@ static WM_Error win_init(MC_Alloc *alloc, WM_Target **out) {
         return WM_ERROR_UNKNOWN;
     }
 
+    if (FAILED(CoCreateInstance(&WM_CLSID_VirtualDesktopManager, NULL, CLSCTX_INPROC_SERVER,
+                                &WM_IID_IVirtualDesktopManager, (void **)&t->vdm))) {
+        t->vdm = NULL;
+    }
+
     *out = t;
     return WM_ERROR_OK;
 }
@@ -320,6 +349,9 @@ static void win_destroy(WM_Target *t) {
     MC_VECTOR_FREE(t->items);
     t->items = NULL;
 
+    if (t->vdm) {
+        t->vdm->lpVtbl->Release(t->vdm);
+    }
     if (t->vdmi) {
         t->vdmi->lpVtbl->Release(t->vdmi);
     }
@@ -417,6 +449,68 @@ static MC_Str win_vdesk_name(WM_Target *t, const WM_VDesktop *d) {
     return mc_string_str(d ? d->name : NULL);
 }
 
+typedef struct WM_EnumVDeskCtx {
+    IVirtualDesktopManager *vdm;
+    GUID id;
+    WM_WindowHandleSink sink;
+    void *ctx;
+} WM_EnumVDeskCtx;
+
+static BOOL CALLBACK enum_vdesk_windows(HWND hwnd, LPARAM lparam) {
+    WM_EnumVDeskCtx *e = (WM_EnumVDeskCtx *)lparam;
+
+    if (!IsWindowVisible(hwnd) || GetWindowTextLengthW(hwnd) == 0) {
+        return TRUE;
+    }
+
+    GUID id;
+    if (FAILED(e->vdm->lpVtbl->GetWindowDesktopId(e->vdm, hwnd, &id))) {
+        return TRUE;
+    }
+
+    if (guid_eq(&id, &e->id)) {
+        e->sink(e->ctx, (uint64_t)(uintptr_t)hwnd);
+    }
+
+    return TRUE;
+}
+
+static WM_Error win_vdesk_windows(WM_Target *t, const WM_VDesktop *vdesk, WM_WindowHandleSink sink, void *ctx) {
+    if (t == NULL || vdesk == NULL || sink == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (t->vdm == NULL) {
+        return WM_ERROR_NOT_IMPLEMENTED;
+    }
+
+    WM_EnumVDeskCtx e = {
+        .vdm = t->vdm,
+        .id = vdesk->id,
+        .sink = sink,
+        .ctx = ctx,
+    };
+    EnumWindows(enum_vdesk_windows, (LPARAM)&e);
+
+    return WM_ERROR_OK;
+}
+
+static WM_Error win_vdesk_size(WM_Target *t, const WM_VDesktop *vdesk, MC_Size2U *out) {
+    (void)t;
+    (void)vdesk;
+
+    RECT work;
+    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0)) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    *out = (MC_Size2U){
+        .width = (unsigned)(work.right - work.left),
+        .height = (unsigned)(work.bottom - work.top),
+    };
+    return WM_ERROR_OK;
+}
+
 static const WM_TargetInterface windows_interface = {
     .init = win_init,
     .destroy = win_destroy,
@@ -425,6 +519,8 @@ static const WM_TargetInterface windows_interface = {
     .vdesk_create = win_vdesk_create,
     .vdesk_current = win_vdesk_current,
     .vdesk_name = win_vdesk_name,
+    .vdesk_windows = win_vdesk_windows,
+    .vdesk_size = win_vdesk_size,
 };
 
 const WM_TargetInterface *const uniwm_windows_target = &windows_interface;

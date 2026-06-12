@@ -42,8 +42,61 @@ static int vdesk_switch(lua_State *L) {
     return 0;
 }
 
-static void push_vdesk(lua_State *L, WM *wm, WM_VDesktopSpan span, size_t i) {
+typedef struct CollectVDeskWindows {
+    lua_State *L;
+    int table_index;
+    lua_Integer count;
+} CollectVDeskWindows;
+
+static void collect_vdesk_window(MC_WindowRef *window, void *ctx) {
+    CollectVDeskWindows *c = ctx;
+
+    mc_wm_lua_push_window(c->L, window);
+    lua_rawseti(c->L, c->table_index, ++c->count);
+}
+
+static int vdesk_windows(lua_State *L) {
+    WM *wm = current_wm(L);
+    lua_Integer index = lua_tointeger(L, lua_upvalueindex(1));
+    WM_VDesktopSpan span = wm_vdesktops(wm);
+
+    if (index < 1 || (size_t)index > span.count) {
+        return luaL_error(L, "uniwm: virtual desktop %d no longer exists", (int)index);
+    }
+
+    lua_newtable(L);
+    CollectVDeskWindows c = {.L = L, .table_index = lua_gettop(L), .count = 0};
+    if (wm_vdesktop_windows(wm, span.desktops[index - 1], collect_vdesk_window, &c) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm: failed to list windows on virtual desktop %d", (int)index);
+    }
+
+    return 1;
+}
+
+static int vdesk_size(lua_State *L) {
+    WM *wm = current_wm(L);
+    lua_Integer index = lua_tointeger(L, lua_upvalueindex(1));
+    WM_VDesktopSpan span = wm_vdesktops(wm);
+
+    if (index < 1 || (size_t)index > span.count) {
+        return luaL_error(L, "uniwm: virtual desktop %d no longer exists", (int)index);
+    }
+
+    MC_Size2U size;
+    if (wm_vdesktop_size(wm, span.desktops[index - 1], &size) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm: failed to get virtual desktop size");
+    }
+
     lua_createtable(L, 0, 2);
+    lua_pushinteger(L, size.width);
+    lua_setfield(L, -2, "width");
+    lua_pushinteger(L, size.height);
+    lua_setfield(L, -2, "height");
+    return 1;
+}
+
+static void push_vdesk(lua_State *L, WM *wm, WM_VDesktopSpan span, size_t i) {
+    lua_createtable(L, 0, 4);
 
     MC_Str name = wm_vdesktop_name(wm, span.desktops[i]);
     lua_pushlstring(L, name.beg ? name.beg : "", MC_STR_LEN(name));
@@ -52,6 +105,14 @@ static void push_vdesk(lua_State *L, WM *wm, WM_VDesktopSpan span, size_t i) {
     lua_pushinteger(L, (lua_Integer)(i + 1));
     lua_pushcclosure(L, vdesk_switch, 1);
     lua_setfield(L, -2, "switch");
+
+    lua_pushinteger(L, (lua_Integer)(i + 1));
+    lua_pushcclosure(L, vdesk_windows, 1);
+    lua_setfield(L, -2, "windows");
+
+    lua_pushinteger(L, (lua_Integer)(i + 1));
+    lua_pushcclosure(L, vdesk_size, 1);
+    lua_setfield(L, -2, "size");
 }
 
 static int l_vdesk_list(lua_State *L) {

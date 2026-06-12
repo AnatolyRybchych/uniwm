@@ -138,3 +138,62 @@ WM_VDesktop *wm_vdesktop_current(WM *wm) {
 MC_Str wm_vdesktop_name(WM *wm, const WM_VDesktop *vdesk) {
     return wm->target_interface->vdesk_name(wm->target, vdesk);
 }
+
+typedef struct WM_VDesktopWindowsCtx {
+    MC_WM *mc_wm;
+    MC_TargetWM *target;
+    void (*visit)(MC_WindowRef *window, void *ctx);
+    void *ctx;
+} WM_VDesktopWindowsCtx;
+
+static void resolve_window_handle(void *ctx, uint64_t handle) {
+    WM_VDesktopWindowsCtx *c = ctx;
+
+    uint64_t identity;
+    if (mc_wm_win32_identity_from_hwnd(c->target, (HWND)(uintptr_t)handle, &identity) != MCE_OK) {
+        return;
+    }
+
+    MC_WindowRef *window;
+    if (mc_wm_resolve_window(c->mc_wm, identity, &window) != MCE_OK) {
+        return;
+    }
+
+    c->visit(window, c->ctx);
+}
+
+WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_WindowRef *window, void *ctx), void *ctx) {
+    if (wm == NULL || vdesk == NULL || visit == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (wm->target_interface->vdesk_windows == NULL) {
+        return WM_ERROR_NOT_IMPLEMENTED;
+    }
+
+    MC_WM *mc_wm;
+    if (mc_wm_resolve(&mc_wm) != MCE_OK) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    WM_VDesktopWindowsCtx c = {
+        .mc_wm = mc_wm,
+        .target = mc_wm_get_target(mc_wm),
+        .visit = visit,
+        .ctx = ctx,
+    };
+
+    return wm->target_interface->vdesk_windows(wm->target, vdesk, resolve_window_handle, &c);
+}
+
+WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out) {
+    if (wm == NULL || vdesk == NULL || out == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (wm->target_interface->vdesk_size == NULL) {
+        return WM_ERROR_NOT_IMPLEMENTED;
+    }
+
+    return wm->target_interface->vdesk_size(wm->target, vdesk, out);
+}
