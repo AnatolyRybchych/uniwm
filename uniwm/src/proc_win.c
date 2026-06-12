@@ -1,6 +1,7 @@
 #include "proc.h"
 
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include <windows.h>
 
@@ -11,6 +12,31 @@ struct WM_Child {
     HANDLE process;
     HANDLE thread;
 };
+
+static HANDLE ensure_job(void) {
+    static HANDLE job = NULL;
+    static bool tried = false;
+
+    if (tried) {
+        return job;
+    }
+    tried = true;
+
+    HANDLE created = CreateJobObjectW(NULL, NULL);
+    if (created == NULL) {
+        return NULL;
+    }
+
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION info = {0};
+    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(created, JobObjectExtendedLimitInformation, &info, sizeof(info))) {
+        CloseHandle(created);
+        return NULL;
+    }
+
+    job = created;
+    return job;
+}
 
 static void append_quoted(wchar_t *buf, size_t cap, size_t *len, const wchar_t *s) {
     size_t i = *len;
@@ -61,11 +87,18 @@ WM_Error wm_proc_spawn_self(const char *const *args, size_t count, WM_Child **ou
     }
     cmdline[len < COMMAND_LINE_CAP ? len : COMMAND_LINE_CAP - 1] = 0;
 
+    HANDLE job = ensure_job();
+
     STARTUPINFOW si = { .cb = sizeof(si) };
     PROCESS_INFORMATION pi = {0};
-    if (!CreateProcessW(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+    if (!CreateProcessW(NULL, cmdline, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
         return WM_ERROR_UNKNOWN;
     }
+
+    if (job != NULL) {
+        AssignProcessToJobObject(job, pi.hProcess);
+    }
+    ResumeThread(pi.hThread);
 
     WM_Child *child = malloc(sizeof(*child));
     if (child == NULL) {
