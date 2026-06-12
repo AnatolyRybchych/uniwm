@@ -1,6 +1,7 @@
 #include <uniwm-lua/uniwm-lua.h>
 
 #include <stdio.h>
+#include <stdbool.h>
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -30,18 +31,56 @@ static WM *current_wm(lua_State *L) {
     return wm;
 }
 
-static int vdesk_switch(lua_State *L) {
-    WM *wm = current_wm(L);
-    lua_Integer index = lua_tointeger(L, lua_upvalueindex(1));
-    WM_VDesktopSpan span = wm_vdesktops(wm);
+#define VDESK_CACHE "libuniwm.vdesktops"
 
-    if (index < 1 || (size_t)index > span.count) {
-        return luaL_error(L, "uniwm: virtual desktop %d no longer exists", (int)index);
+static void push_vdesk_cache(lua_State *L) {
+    if (luaL_getsubtable(L, LUA_REGISTRYINDEX, VDESK_CACHE)) {
+        return;
     }
 
-    WM_Error e = wm_vdesktop_switch(wm, span.desktops[index - 1]);
-    if (e != WM_ERROR_OK) {
-        return luaL_error(L, "uniwm: switch failed (%d)", (int)e);
+    lua_newtable(L);
+    lua_pushstring(L, "v");
+    lua_setfield(L, -2, "__mode");
+    lua_setmetatable(L, -2);
+}
+
+static bool vdesk_cache_get(lua_State *L, const void *key) {
+    push_vdesk_cache(L);
+    if (lua_rawgetp(L, -1, key) == LUA_TNIL) {
+        lua_pop(L, 2);
+        return false;
+    }
+
+    lua_remove(L, -2);
+    return true;
+}
+
+static void vdesk_cache_put(lua_State *L, const void *key) {
+    push_vdesk_cache(L);
+    lua_pushvalue(L, -2);
+    lua_rawsetp(L, -2, key);
+    lua_pop(L, 1);
+}
+
+static WM_VDesktop *checked_vdesk(lua_State *L, WM *wm) {
+    WM_VDesktop *d = lua_touserdata(L, lua_upvalueindex(1));
+    WM_VDesktopSpan span = wm_vdesktops(wm);
+    for (size_t i = 0; i < span.count; i++) {
+        if (span.desktops[i] == d) {
+            return d;
+        }
+    }
+
+    luaL_error(L, "uniwm: virtual desktop no longer exists");
+    return NULL;
+}
+
+static int vdesk_switch(lua_State *L) {
+    WM *wm = current_wm(L);
+    WM_VDesktop *d = checked_vdesk(L, wm);
+
+    if (wm_vdesktop_switch(wm, d) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm: switch failed");
     }
 
     return 0;
@@ -62,17 +101,12 @@ static void collect_vdesk_window(MC_WindowRef *window, void *ctx) {
 
 static int vdesk_windows(lua_State *L) {
     WM *wm = current_wm(L);
-    lua_Integer index = lua_tointeger(L, lua_upvalueindex(1));
-    WM_VDesktopSpan span = wm_vdesktops(wm);
-
-    if (index < 1 || (size_t)index > span.count) {
-        return luaL_error(L, "uniwm: virtual desktop %d no longer exists", (int)index);
-    }
+    WM_VDesktop *d = checked_vdesk(L, wm);
 
     lua_newtable(L);
     CollectVDeskWindows c = {.L = L, .table_index = lua_gettop(L), .count = 0};
-    if (wm_vdesktop_windows(wm, span.desktops[index - 1], collect_vdesk_window, &c) != WM_ERROR_OK) {
-        return luaL_error(L, "uniwm: failed to list windows on virtual desktop %d", (int)index);
+    if (wm_vdesktop_windows(wm, d, collect_vdesk_window, &c) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm: failed to list windows on virtual desktop");
     }
 
     return 1;
@@ -80,15 +114,10 @@ static int vdesk_windows(lua_State *L) {
 
 static int vdesk_size(lua_State *L) {
     WM *wm = current_wm(L);
-    lua_Integer index = lua_tointeger(L, lua_upvalueindex(1));
-    WM_VDesktopSpan span = wm_vdesktops(wm);
-
-    if (index < 1 || (size_t)index > span.count) {
-        return luaL_error(L, "uniwm: virtual desktop %d no longer exists", (int)index);
-    }
+    WM_VDesktop *d = checked_vdesk(L, wm);
 
     MC_Size2U size;
-    if (wm_vdesktop_size(wm, span.desktops[index - 1], &size) != WM_ERROR_OK) {
+    if (wm_vdesktop_size(wm, d, &size) != WM_ERROR_OK) {
         return luaL_error(L, "uniwm: failed to get virtual desktop size");
     }
 
@@ -100,31 +129,37 @@ static int vdesk_size(lua_State *L) {
     return 1;
 }
 
-static void push_vdesk(lua_State *L, WM *wm, WM_VDesktopSpan span, size_t i) {
+static void push_vdesk(lua_State *L, WM *wm, WM_VDesktop *d) {
+    if (vdesk_cache_get(L, d)) {
+        return;
+    }
+
     lua_createtable(L, 0, 4);
 
-    MC_Str name = wm_vdesktop_name(wm, span.desktops[i]);
+    MC_Str name = wm_vdesktop_name(wm, d);
     lua_pushlstring(L, name.beg ? name.beg : "", MC_STR_LEN(name));
     lua_setfield(L, -2, "name");
 
-    lua_pushinteger(L, (lua_Integer)(i + 1));
+    lua_pushlightuserdata(L, d);
     lua_pushcclosure(L, vdesk_switch, 1);
     lua_setfield(L, -2, "switch");
 
-    lua_pushinteger(L, (lua_Integer)(i + 1));
+    lua_pushlightuserdata(L, d);
     lua_pushcclosure(L, vdesk_windows, 1);
     lua_setfield(L, -2, "windows");
 
-    lua_pushinteger(L, (lua_Integer)(i + 1));
+    lua_pushlightuserdata(L, d);
     lua_pushcclosure(L, vdesk_size, 1);
     lua_setfield(L, -2, "size");
+
+    vdesk_cache_put(L, d);
 }
 
 static void push_vdesk_ptr(lua_State *L, WM *wm, WM_VDesktop *vdesk) {
     WM_VDesktopSpan span = wm_vdesktops(wm);
     for (size_t i = 0; i < span.count; i++) {
         if (span.desktops[i] == vdesk) {
-            push_vdesk(L, wm, span, i);
+            push_vdesk(L, wm, vdesk);
             return;
         }
     }
@@ -172,7 +207,7 @@ static int l_vdesk_list(lua_State *L) {
 
     lua_createtable(L, (int)span.count, 0);
     for (size_t i = 0; i < span.count; i++) {
-        push_vdesk(L, wm, span, i);
+        push_vdesk(L, wm, span.desktops[i]);
         lua_rawseti(L, -2, (lua_Integer)(i + 1));
     }
 
@@ -188,31 +223,14 @@ static int l_vdesk_create(lua_State *L) {
         return luaL_error(L, "uniwm.vdesktop:create: failed");
     }
 
-    WM_VDesktopSpan span = wm_vdesktops(wm);
-    for (size_t i = 0; i < span.count; i++) {
-        if (span.desktops[i] == d) {
-            push_vdesk(L, wm, span, i);
-            return 1;
-        }
-    }
-
-    lua_pushnil(L);
+    push_vdesk_ptr(L, wm, d);
     return 1;
 }
 
 static int l_vdesk_current(lua_State *L) {
     WM *wm = current_wm(L);
-    WM_VDesktopSpan span = wm_vdesktops(wm);
-    WM_VDesktop *cur = wm_vdesktop_current(wm);
 
-    for (size_t i = 0; i < span.count; i++) {
-        if (span.desktops[i] == cur) {
-            push_vdesk(L, wm, span, i);
-            return 1;
-        }
-    }
-
-    lua_pushnil(L);
+    push_vdesk_ptr(L, wm, wm_vdesktop_current(wm));
     return 1;
 }
 
