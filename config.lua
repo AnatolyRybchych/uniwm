@@ -3,16 +3,51 @@ local mcwm = require("mc.wm")
 
 local wm = mcwm.resolve()
 
-local function layout_vdesk (desktop, managed)
+local function filter(table, predicate)
+    local res = {}
+    for k, v in pairs(table) do
+        if predicate(v, k) then
+            res[k] = v
+        end
+    end
+
+    return res
+end
+
+local function map(table, transform)
+    local res = {}
+    for k, v in pairs(table) do
+        res[k] = transform(v, k)
+    end
+
+    return res
+end
+
+local function list(tab)
+    local res = {}
+    for k, v in pairs(tab) do
+        table.insert(res, v)
+    end
+
+    return res
+end
+
+local function layout_vdesk (desktop, managed)    
     print(string.format('DESKTOP CHANGED to %s [%s]', desktop.name , managed))
+
     local windows = desktop:windows()
-    local count = #windows
-    if count == 0 then
+    windows = list(filter(windows, function (w) return not w:is_system() end))
+
+    if #windows == 0 then
         return
     end
 
+    for k, window in pairs(windows) do
+        print('  ' .. window:get_title())
+    end
+
     local size = desktop:size()
-    local width = math.floor(size.width / count)
+    local width = math.floor(size.width / #windows)
     for i, window in ipairs(windows) do
         pcall(function()
             window:set_state("normal")
@@ -54,7 +89,7 @@ for i = 1, 10 do
 
     uniwm.supress_key(move_window_hotkey)
     uniwm.register_keybind(move_window_hotkey, function()
-        local window = wm:get_focused_window()
+        local window = wm:get_hovered_window()
         if list[i] and window then
             list[i]:move_window(window)
         end
