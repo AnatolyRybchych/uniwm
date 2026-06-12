@@ -33,6 +33,7 @@ local function list(tab)
 end
 
 local function layout_vdesk (desktop, managed)    
+    print('------------------------------')
     print(string.format('DESKTOP CHANGED to %s [%s]', desktop.name , managed))
 
     local windows = desktop:windows()
