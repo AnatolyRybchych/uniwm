@@ -8,6 +8,7 @@
 #include <servprov.h>
 #include <objectarray.h>
 #include <winstring.h>
+#include <dwmapi.h>
 
 #include <mc/data/alloc.h>
 #include <mc/data/vector.h>
@@ -481,14 +482,24 @@ static MC_Str win_vdesk_name(WM_Target *t, const WM_VDesktop *d) {
 typedef struct WM_EnumVDeskCtx {
     IVirtualDesktopManager *vdm;
     GUID id;
+    bool skip_cloaked;
     WM_WindowHandleSink sink;
     void *ctx;
 } WM_EnumVDeskCtx;
+
+static bool hwnd_is_cloaked(HWND hwnd) {
+    DWORD cloaked = 0;
+    return SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked != 0;
+}
 
 static BOOL CALLBACK enum_vdesk_windows(HWND hwnd, LPARAM lparam) {
     WM_EnumVDeskCtx *e = (WM_EnumVDeskCtx *)lparam;
 
     if (!IsWindowVisible(hwnd) || GetWindowTextLengthW(hwnd) == 0) {
+        return TRUE;
+    }
+
+    if (e->skip_cloaked && hwnd_is_cloaked(hwnd)) {
         return TRUE;
     }
 
@@ -504,6 +515,20 @@ static BOOL CALLBACK enum_vdesk_windows(HWND hwnd, LPARAM lparam) {
     return TRUE;
 }
 
+static bool vdesk_is_current(WM_Target *t, const WM_VDesktop *vdesk) {
+    IVirtualDesktop *cur = NULL;
+    if (FAILED(t->vdmi->lpVtbl->GetCurrentDesktop(t->vdmi, &cur)) || !cur) {
+        return false;
+    }
+
+    GUID id;
+    memset(&id, 0, sizeof(id));
+    cur->lpVtbl->GetID(cur, &id);
+    cur->lpVtbl->Release(cur);
+
+    return guid_eq(&id, &vdesk->id);
+}
+
 static WM_Error win_vdesk_windows(WM_Target *t, const WM_VDesktop *vdesk, WM_WindowHandleSink sink, void *ctx) {
     if (t == NULL || vdesk == NULL || sink == NULL) {
         return WM_ERROR_INVALID_ARGUMENT;
@@ -516,6 +541,7 @@ static WM_Error win_vdesk_windows(WM_Target *t, const WM_VDesktop *vdesk, WM_Win
     WM_EnumVDeskCtx e = {
         .vdm = t->vdm,
         .id = vdesk->id,
+        .skip_cloaked = vdesk_is_current(t, vdesk),
         .sink = sink,
         .ctx = ctx,
     };

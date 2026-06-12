@@ -37,7 +37,7 @@ APP_DIR         := uniwm
 INCLUDES := -I$(LIBUNIWM_DIR)/include -I$(LIBUNIWMLUA_DIR)/include -I$(UNIWMWIN_DIR)/include $(MC_INC) -I$(WMLUA_DIR)/include -I$(LUA_SRCDIR)
 CFLAGS   := -std=c11 -Wall -Wextra $(INCLUDES)
 
-WIN_LDLIBS := -lole32 -loleaut32 -lruntimeobject -luuid -luser32 -lgdi32
+WIN_LDLIBS := -lole32 -loleaut32 -lruntimeobject -luuid -luser32 -lgdi32 -ldwmapi
 
 LIBUNIWM        := $(BINDIR)/libuniwm.dll
 LIBUNIWM_IMP    := $(BUILDDIR)/libuniwm.dll.a
