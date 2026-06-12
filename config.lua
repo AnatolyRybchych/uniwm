@@ -9,9 +9,22 @@ uniwm.supress_key("SUPER_L")
 local mcwm = require("mc.wm")
 local wm = mcwm.resolve()
 
-for _, window in ipairs(wm:get_all_windows()) do
-    print(string.format('[%s]\t%s', window:get_state(), window:get_title()))
-end
+uniwm.supress_key("SUPER_L + SHIFT_L + R")
+uniwm.register_keybind("SUPER_L + SHIFT_L + R", function()
+    local desktop = uniwm.virtual_desktop.current()
+    local windows = desktop:windows()
+    local count = #windows
+    if count == 0 then
+        return
+    end
+
+    local size = desktop:size()
+    local width = math.floor(size.width / count)
+    for i, window in ipairs(windows) do
+        window:set_state("normal")
+        window:set_rect({ x = (i - 1) * width, y = 0, width = width, height = size.height }, "decorated")
+    end
+end)
 
 uniwm.supress_key("SUPER_L + SHIFT_L + C")
 uniwm.register_keybind("SUPER_L + SHIFT_L + C", function()
