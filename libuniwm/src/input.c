@@ -196,8 +196,15 @@ WM_Error wm_run(void) {
             }
 
             if (down && !was_down) {
+                size_t best = 0;
                 for (int i = 0; i < keybind_count; i++) {
-                    if (combo_triggered(key, &keybinds[i].combo, keybind_down)) {
+                    if (combo_triggered(key, &keybinds[i].combo, keybind_down) && keybinds[i].combo.count > best) {
+                        best = keybinds[i].combo.count;
+                    }
+                }
+
+                for (int i = 0; i < keybind_count; i++) {
+                    if (keybinds[i].combo.count == best && combo_triggered(key, &keybinds[i].combo, keybind_down)) {
                         keybinds[i].cb(keybinds[i].ctx);
                     }
                 }
