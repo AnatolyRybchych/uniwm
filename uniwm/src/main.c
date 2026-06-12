@@ -61,13 +61,16 @@ static int run_worker(int argc, char **argv) {
     return rc == 0 ? 0 : 1;
 }
 
-static int run_supervisor(const char *const *args, size_t count) {
+static int run_supervisor(bool restart, const char *const *args, size_t count) {
     for (;;) {
         uint64_t start = wm_proc_now_ms();
 
         WM_Child *child = NULL;
         if (wm_proc_spawn_self(args, count, &child) != WM_ERROR_OK) {
-            fprintf(stderr, "uniwm: failed to start child process; retrying\n");
+            fprintf(stderr, "uniwm: failed to start child process\n");
+            if (!restart) {
+                return 1;
+            }
             wm_proc_sleep_ms(SUPERVISOR_RESTART_DELAY_MS);
             continue;
         }
@@ -76,6 +79,10 @@ static int run_supervisor(const char *const *args, size_t count) {
         wm_proc_wait(child, &code);
         wm_proc_close(child);
 
+        if (!restart) {
+            return code;
+        }
+
         uint64_t ran = wm_proc_now_ms() - start;
         fprintf(stderr, "uniwm: child exited (code %d) after %llums; restarting\n", code, (unsigned long long)ran);
 
@@ -83,8 +90,6 @@ static int run_supervisor(const char *const *args, size_t count) {
             wm_proc_sleep_ms(SUPERVISOR_RESTART_DELAY_MS);
         }
     }
-
-    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -92,11 +97,19 @@ int main(int argc, char **argv) {
 
     const char *child_args[CHILD_ARGS_MAX];
     size_t child_count = 0;
-    bool supervise = false;
+    child_args[child_count++] = "--worker";
+
+    bool worker = false;
+    bool restart = false;
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--worker") == 0) {
+            worker = true;
+            continue;
+        }
+
         if (strcmp(argv[i], "--restart") == 0) {
-            supervise = true;
+            restart = true;
             continue;
         }
 
@@ -105,9 +118,9 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (supervise) {
-        return run_supervisor(child_args, child_count);
+    if (worker) {
+        return run_worker(argc, argv);
     }
 
-    return run_worker(argc, argv);
+    return run_supervisor(restart, child_args, child_count);
 }
