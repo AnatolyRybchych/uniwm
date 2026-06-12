@@ -72,7 +72,7 @@ $(BIN): $(APP_OBJ) $(LIBUNIWM_IMP) $(LIBUNIWMLUA_IMP) $(UNIWMWIN_IMP) $(LUA_IMP)
 	$(LD) $(CFLAGS) -o $@ $(APP_OBJ) $(LIBUNIWMLUA_IMP) $(LIBUNIWM_IMP) $(UNIWMWIN_IMP) $(LUA_IMP) -Wl,--start-group $(MC_LIBS) -Wl,--end-group
 
 $(LIBUNIWM): $(LIBUNIWM_OBJ) $(MC_LIBS) | $(BINDIR)
-	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWM_OBJ) -Wl,--whole-archive $(MC_LIBS) -Wl,--no-whole-archive -luser32 -lgdi32 -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWM_IMP)
+	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWM_OBJ) -Wl,--whole-archive $(MC_LIBS) -Wl,--no-whole-archive -luser32 -lgdi32 -ldwmapi -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWM_IMP)
 
 $(LIBUNIWM_IMP): $(LIBUNIWM) ;
 
