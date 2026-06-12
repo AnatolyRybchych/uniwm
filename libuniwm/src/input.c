@@ -178,6 +178,8 @@ WM_Error wm_run(void) {
     for (;;) {
         MC_WMEvent event;
         while (mc_wm_poll_event(input, &event) == MCE_OK) {
+            mc_wm_dispatch_event_callbacks(input, &event);
+
             MC_Key key;
             bool down;
             if (event.type == MC_WME_GLOBAL_KEY_DOWN) {
