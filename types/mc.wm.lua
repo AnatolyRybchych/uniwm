@@ -82,6 +82,10 @@ function Window:is_system() end
 --- Politely ask the window to close (foreign: WM_CLOSE; managed: destroy).
 function Window:close() end
 
+--- Give the window input focus / bring it to the foreground.
+---@return mcwm.Window self
+function Window:focus() end
+
 --- Destroy a window this WM owns (created via `WM:create_window`).
 function Window:destroy() end
 
