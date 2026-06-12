@@ -17,6 +17,37 @@
 ---@alias mcwm.Area "window"|"decorated"|"drawable"
 ---@alias mcwm.WindowState "normal"|"minimized"|"maximized"|"fullscreen"
 
+--- Event type names (as `mc_wm_event_type_str` emits / `mc_wm_event_type_from_str`
+--- accepts). `"NONE"` matches every event (but prefer `nil` in `WM:on_event`).
+---@alias mcwm.EventType
+---| "NONE"
+---| "RAW"
+---| "WINDOW_READY"
+---| "WINDOW_RESIZED"
+---| "WINDOW_MOVED"
+---| "WINDOW_REDRAW_REQUESTED"
+---| "WINDOW_CLOSE_REQUESTED"
+---| "WINDOW_STATE_CHANGED"
+---| "FOCUS_GAINED"
+---| "FOCUS_LOST"
+---| "MOUSE_MOVED"
+---| "MOUSE_DOWN"
+---| "MOUSE_UP"
+---| "MOUSE_CLICK"
+---| "MOUSE_ENTER"
+---| "MOUSE_LEAVE"
+---| "MOUSE_WHEEL"
+---| "KEY_DOWN"
+---| "KEY_UP"
+---| "TEXT_INPUT"
+---| "PASTE_TEXT"
+---| "GLOBAL_KEY_DOWN"
+---| "GLOBAL_KEY_UP"
+---| "GLOBAL_MOUSE_MOVED"
+---| "GLOBAL_MOUSE_DOWN"
+---| "GLOBAL_MOUSE_UP"
+---| "GLOBAL_MOUSE_WHEEL"
+
 ---@class mcwm.WindowOpts
 ---@field title? string
 ---@field size? mcwm.Size
@@ -24,7 +55,7 @@
 ---@field state? mcwm.WindowState
 
 ---@class mcwm.Event
----@field type string
+---@field type mcwm.EventType
 ---@field key? integer
 
 ---@class mcwm.Window
@@ -107,6 +138,22 @@ function WM:get_all_windows() end
 
 ---@return mcwm.Event? # nil if the queue is empty
 function WM:poll_event() end
+
+---@class mcwm.Subscription
+local Subscription = {}
+
+--- Stop receiving events for this subscription.
+function Subscription:unsubscribe() end
+
+--- Register a callback for events. `event_type` is an event type name (e.g.
+--- `"GLOBAL_KEY_DOWN"`) or `nil` to match every event. The callback currently
+--- receives no arguments. Hold the returned subscription to keep it active and to
+--- be able to `:unsubscribe()`. Callbacks fire from the host's event loop, which
+--- decides which events to dispatch.
+---@param event_type? mcwm.EventType
+---@param callback fun()
+---@return mcwm.Subscription
+function WM:on_event(event_type, callback) end
 
 function WM:destroy() end
 
