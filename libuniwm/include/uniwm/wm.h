@@ -58,6 +58,7 @@ WM_VDesktop *wm_vdesktop_current(WM *wm);
 MC_Str wm_vdesktop_name(WM *wm, const WM_VDesktop *vdesk);
 WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_WindowRef *window, void *ctx), void *ctx);
 WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out);
+WM_Error wm_vdesktop_move_window(WM *wm, const WM_VDesktop *vdesk, uint64_t handle);
 WM_Error wm_vdesktop_on_changed(WM *wm, WM_VDesktopChangeCb cb, void *ctx);
 
 WM_Error wm_key_combo_from_str(const char *spec, WM_KeyCombo *out);

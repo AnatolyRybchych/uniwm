@@ -112,6 +112,23 @@ static int vdesk_windows(lua_State *L) {
     return 1;
 }
 
+static int vdesk_move_window(lua_State *L) {
+    WM *wm = current_wm(L);
+    WM_VDesktop *d = checked_vdesk(L, wm);
+    MC_WindowRef *ref = mc_wm_lua_check_window(L, 2);
+
+    uint64_t handle;
+    if (mc_wm_window_get_identity(ref, &handle) != MCE_OK) {
+        return luaL_error(L, "uniwm: move_window: window has no movable handle");
+    }
+
+    if (wm_vdesktop_move_window(wm, d, handle) != WM_ERROR_OK) {
+        return luaL_error(L, "uniwm: move_window: failed");
+    }
+
+    return 0;
+}
+
 static int vdesk_size(lua_State *L) {
     WM *wm = current_wm(L);
     WM_VDesktop *d = checked_vdesk(L, wm);
@@ -134,7 +151,7 @@ static void push_vdesk(lua_State *L, WM *wm, WM_VDesktop *d) {
         return;
     }
 
-    lua_createtable(L, 0, 4);
+    lua_createtable(L, 0, 5);
 
     MC_Str name = wm_vdesktop_name(wm, d);
     lua_pushlstring(L, name.beg ? name.beg : "", MC_STR_LEN(name));
@@ -151,6 +168,10 @@ static void push_vdesk(lua_State *L, WM *wm, WM_VDesktop *d) {
     lua_pushlightuserdata(L, d);
     lua_pushcclosure(L, vdesk_size, 1);
     lua_setfield(L, -2, "size");
+
+    lua_pushlightuserdata(L, d);
+    lua_pushcclosure(L, vdesk_move_window, 1);
+    lua_setfield(L, -2, "move_window");
 
     vdesk_cache_put(L, d);
 }

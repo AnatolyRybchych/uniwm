@@ -24,6 +24,7 @@ struct WM_TargetInterface {
 
     WM_Error (*vdesk_windows)(WM_Target *target, const WM_VDesktop *vdesk, WM_WindowHandleSink sink, void *ctx);
     WM_Error (*vdesk_size)(WM_Target *target, const WM_VDesktop *vdesk, MC_Size2U *out);
+    WM_Error (*vdesk_move_window)(WM_Target *target, const WM_VDesktop *vdesk, uint64_t handle);
 };
 
 #endif

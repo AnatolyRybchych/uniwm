@@ -231,3 +231,15 @@ WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out) {
 
     return wm->target_interface->vdesk_size(wm->target, vdesk, out);
 }
+
+WM_Error wm_vdesktop_move_window(WM *wm, const WM_VDesktop *vdesk, uint64_t handle) {
+    if (wm == NULL || vdesk == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (wm->target_interface->vdesk_move_window == NULL) {
+        return WM_ERROR_NOT_IMPLEMENTED;
+    }
+
+    return wm->target_interface->vdesk_move_window(wm->target, vdesk, handle);
+}

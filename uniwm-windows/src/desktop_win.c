@@ -100,6 +100,26 @@ static const IID WM_IID_IVirtualDesktopManager = {
     0xA5CD92FF, 0x29BE, 0x454C,
     { 0x8D, 0x04, 0xD8, 0x28, 0x79, 0xFB, 0x3F, 0x1B } };
 
+typedef struct IApplicationViewCollection IApplicationViewCollection;
+
+typedef struct IApplicationViewCollectionVtbl {
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(IApplicationViewCollection *this, REFIID riid, void **ppv);
+    ULONG   (STDMETHODCALLTYPE *AddRef)(IApplicationViewCollection *this);
+    ULONG   (STDMETHODCALLTYPE *Release)(IApplicationViewCollection *this);
+    HRESULT (STDMETHODCALLTYPE *GetViews)(IApplicationViewCollection *this, IObjectArray **out);
+    HRESULT (STDMETHODCALLTYPE *GetViewsByZOrder)(IApplicationViewCollection *this, IObjectArray **out);
+    HRESULT (STDMETHODCALLTYPE *GetViewsByAppUserModelId)(IApplicationViewCollection *this, const wchar_t *id, IObjectArray **out);
+    HRESULT (STDMETHODCALLTYPE *GetViewForHwnd)(IApplicationViewCollection *this, HWND hwnd, IUnknown **view);
+} IApplicationViewCollectionVtbl;
+
+struct IApplicationViewCollection {
+    const IApplicationViewCollectionVtbl *lpVtbl;
+};
+
+static const IID WM_IID_IApplicationViewCollection = {
+    0x1841C6D7, 0x4F9D, 0x42C0,
+    { 0xAF, 0x41, 0x87, 0x47, 0x53, 0x8F, 0x10, 0xE5 } };
+
 struct WM_VDesktop {
     IVirtualDesktop *iface;
     GUID id;
@@ -112,6 +132,7 @@ struct WM_Target {
     IServiceProvider *sp;
     IVirtualDesktopManagerInternal *vdmi;
     IVirtualDesktopManager *vdm;
+    IApplicationViewCollection *avc;
 
     WM_VDesktopList *items;
 };
@@ -333,6 +354,11 @@ static WM_Error win_init(MC_Alloc *alloc, WM_Target **out) {
         t->vdm = NULL;
     }
 
+    if (FAILED(t->sp->lpVtbl->QueryService(t->sp, &WM_IID_IApplicationViewCollection,
+                                           &WM_IID_IApplicationViewCollection, (void **)&t->avc))) {
+        t->avc = NULL;
+    }
+
     *out = t;
     return WM_ERROR_OK;
 }
@@ -349,6 +375,9 @@ static void win_destroy(WM_Target *t) {
     MC_VECTOR_FREE(t->items);
     t->items = NULL;
 
+    if (t->avc) {
+        t->avc->lpVtbl->Release(t->avc);
+    }
     if (t->vdm) {
         t->vdm->lpVtbl->Release(t->vdm);
     }
@@ -495,6 +524,30 @@ static WM_Error win_vdesk_windows(WM_Target *t, const WM_VDesktop *vdesk, WM_Win
     return WM_ERROR_OK;
 }
 
+static WM_Error win_vdesk_move_window(WM_Target *t, const WM_VDesktop *vdesk, uint64_t handle) {
+    if (t == NULL || vdesk == NULL || vdesk->iface == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (t->avc == NULL) {
+        return WM_ERROR_NOT_IMPLEMENTED;
+    }
+
+    IUnknown *view = NULL;
+    if (FAILED(t->avc->lpVtbl->GetViewForHwnd(t->avc, (HWND)(uintptr_t)handle, &view)) || !view) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    HRESULT hr = t->vdmi->lpVtbl->MoveViewToDesktop(t->vdmi, view, vdesk->iface);
+    view->lpVtbl->Release(view);
+
+    if (FAILED(hr)) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    return WM_ERROR_OK;
+}
+
 static WM_Error win_vdesk_size(WM_Target *t, const WM_VDesktop *vdesk, MC_Size2U *out) {
     (void)t;
     (void)vdesk;
@@ -521,6 +574,7 @@ static const WM_TargetInterface windows_interface = {
     .vdesk_name = win_vdesk_name,
     .vdesk_windows = win_vdesk_windows,
     .vdesk_size = win_vdesk_size,
+    .vdesk_move_window = win_vdesk_move_window,
 };
 
 const WM_TargetInterface *const uniwm_windows_target = &windows_interface;
