@@ -100,3 +100,7 @@ for i = 1, 10 do
         end
     end)
 end
+
+wm:on_event("GLOBAL_KEY_DOWN", function ()
+    print("GLOBAL_KEY_DOWN")
+end)
