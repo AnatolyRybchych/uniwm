@@ -22,9 +22,24 @@ typedef enum WM_Error {
     WM_ERROR_NOT_IMPLEMENTED = 4,
 } WM_Error;
 
+typedef enum WM_VDesktopChangeSource {
+    WM_VDESKTOP_CHANGE_MANAGED,
+    WM_VDESKTOP_CHANGE_EXTERNAL,
+} WM_VDesktopChangeSource;
+
+typedef void (*WM_VDesktopChangeCb)(WM_VDesktop *current, WM_VDesktopChangeSource source, void *ctx);
+
+typedef struct WM_VDesktopChangeSub {
+    WM_VDesktopChangeCb cb;
+    void *ctx;
+} WM_VDesktopChangeSub;
+
+MC_DEFINE_VECTOR(WM_VDesktopChangeSubList, WM_VDesktopChangeSub);
+
 struct WM {
     const WM_TargetInterface *target_interface;
     WM_Target *target;
+    WM_VDesktopChangeSubList *change_subs;
 };
 
 WM_Error wm_init(WM *wm, const WM_TargetInterface *ti, MC_Alloc *alloc);
@@ -43,6 +58,7 @@ WM_VDesktop *wm_vdesktop_current(WM *wm);
 MC_Str wm_vdesktop_name(WM *wm, const WM_VDesktop *vdesk);
 WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_WindowRef *window, void *ctx), void *ctx);
 WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out);
+WM_Error wm_vdesktop_on_changed(WM *wm, WM_VDesktopChangeCb cb, void *ctx);
 
 WM_Error wm_key_combo_from_str(const char *spec, WM_KeyCombo *out);
 WM_Error wm_suppress_key(WM *wm, const WM_KeyCombo *combo);

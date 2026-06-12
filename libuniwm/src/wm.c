@@ -17,6 +17,7 @@ WM_Error wm_init(WM *wm, const WM_TargetInterface *ti, MC_Alloc *alloc) {
 
     wm->target_interface = ti;
     wm->target = NULL;
+    wm->change_subs = NULL;
 
     return ti->init(alloc, &wm->target);
 }
@@ -29,6 +30,9 @@ void wm_fini(WM *wm) {
     if (wm->target) {
         wm->target_interface->destroy(wm->target);
     }
+
+    MC_VECTOR_FREE(wm->change_subs);
+    wm->change_subs = NULL;
 
     wm->target = NULL;
 }
@@ -111,12 +115,42 @@ WM_VDesktopSpan wm_vdesktops(WM *wm) {
     return wm->target_interface->get_vdesk(wm->target);
 }
 
+static void notify_vdesk_changed(WM *wm, WM_VDesktop *current, WM_VDesktopChangeSource source) {
+    WM_VDesktopChangeSub *sub;
+    MC_VECTOR_EACH(wm->change_subs, sub) {
+        sub->cb(current, source, sub->ctx);
+    }
+}
+
 WM_Error wm_vdesktop_switch(WM *wm, WM_VDesktop *vdesk) {
     if (!vdesk) {
         return WM_ERROR_INVALID_ARGUMENT;
     }
 
-    return wm->target_interface->vdesk_open(wm->target, vdesk);
+    WM_Error e = wm->target_interface->vdesk_open(wm->target, vdesk);
+    if (e != WM_ERROR_OK) {
+        return e;
+    }
+
+    notify_vdesk_changed(wm, vdesk, WM_VDESKTOP_CHANGE_MANAGED);
+
+    return WM_ERROR_OK;
+}
+
+WM_Error wm_vdesktop_on_changed(WM *wm, WM_VDesktopChangeCb cb, void *ctx) {
+    if (wm == NULL || cb == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    WM_VDesktopChangeSub sub = { .cb = cb, .ctx = ctx };
+
+    WM_VDesktopChangeSubList *grown = MC_VECTOR_PUSHN(wm->change_subs, 1, (&sub));
+    if (grown == NULL) {
+        return WM_ERROR_OUT_OF_MEMORY;
+    }
+    wm->change_subs = grown;
+
+    return WM_ERROR_OK;
 }
 
 WM_Error wm_vdesktop_create(WM *wm, MC_Str name, WM_VDesktop **out) {

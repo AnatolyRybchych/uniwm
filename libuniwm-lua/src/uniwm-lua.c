@@ -11,10 +11,15 @@
 
 #include <uniwm/wm.h>
 
-typedef struct Keybind {
+typedef struct LuaCallback {
     lua_State *L;
     int ref;
-} Keybind;
+} LuaCallback;
+
+static void lua_callback_free(LuaCallback *k) {
+    luaL_unref(k->L, LUA_REGISTRYINDEX, k->ref);
+    mc_free(wm_allocator, k);
+}
 
 static WM *current_wm(lua_State *L) {
     WM *wm = wm_process();
@@ -115,6 +120,52 @@ static void push_vdesk(lua_State *L, WM *wm, WM_VDesktopSpan span, size_t i) {
     lua_setfield(L, -2, "size");
 }
 
+static void push_vdesk_ptr(lua_State *L, WM *wm, WM_VDesktop *vdesk) {
+    WM_VDesktopSpan span = wm_vdesktops(wm);
+    for (size_t i = 0; i < span.count; i++) {
+        if (span.desktops[i] == vdesk) {
+            push_vdesk(L, wm, span, i);
+            return;
+        }
+    }
+
+    lua_pushnil(L);
+}
+
+static void vdesk_changed_cb(WM_VDesktop *current, WM_VDesktopChangeSource source, void *ctx) {
+    LuaCallback *k = ctx;
+    lua_State *L = k->L;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, k->ref);
+    push_vdesk_ptr(L, wm_process(), current);
+    lua_pushstring(L, source == WM_VDESKTOP_CHANGE_MANAGED ? "managed" : "external");
+
+    if (lua_pcall(L, 2, 0, 0) != LUA_OK) {
+        fprintf(stderr, "uniwm: virtual_desktop.on_changed callback error: %s\n", lua_tostring(L, -1));
+        lua_pop(L, 1);
+    }
+}
+
+static int l_vdesk_on_changed(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TFUNCTION);
+    WM *wm = current_wm(L);
+
+    LuaCallback *k = NULL;
+    if (mc_alloc(wm_allocator, sizeof(*k), (void **)&k) != MCE_OK) {
+        return luaL_error(L, "uniwm.virtual_desktop.on_changed: out of memory");
+    }
+    k->L = L;
+    lua_pushvalue(L, 1);
+    k->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    if (wm_vdesktop_on_changed(wm, vdesk_changed_cb, k) != WM_ERROR_OK) {
+        lua_callback_free(k);
+        return luaL_error(L, "uniwm.virtual_desktop.on_changed: failed");
+    }
+
+    return 0;
+}
+
 static int l_vdesk_list(lua_State *L) {
     WM *wm = current_wm(L);
     WM_VDesktopSpan span = wm_vdesktops(wm);
@@ -195,13 +246,8 @@ static int l_unsupress_key(lua_State *L) {
     return 0;
 }
 
-static void keybind_free(Keybind *k) {
-    luaL_unref(k->L, LUA_REGISTRYINDEX, k->ref);
-    mc_free(wm_allocator, k);
-}
-
 static void keybind_cb(void *ctx) {
-    Keybind *k = ctx;
+    LuaCallback *k = ctx;
 
     lua_rawgeti(k->L, LUA_REGISTRYINDEX, k->ref);
     if (lua_pcall(k->L, 0, 0, 0) != LUA_OK) {
@@ -224,10 +270,10 @@ static int l_register_keybind(lua_State *L) {
     void *old = NULL;
     wm_unbind_key(wm, &combo, &old);
     if (old) {
-        keybind_free(old);
+        lua_callback_free(old);
     }
 
-    Keybind *k = NULL;
+    LuaCallback *k = NULL;
     if (mc_alloc(wm_allocator, sizeof(*k), (void **)&k) != MCE_OK) {
         return luaL_error(L, "uniwm.register_keybind: out of memory");
     }
@@ -236,7 +282,7 @@ static int l_register_keybind(lua_State *L) {
     k->ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
     if (wm_bind_key(wm, &combo, keybind_cb, k) != WM_ERROR_OK) {
-        keybind_free(k);
+        lua_callback_free(k);
         return luaL_error(L, "uniwm.register_keybind: failed");
     }
 
@@ -254,7 +300,7 @@ static int l_unregister_keybind(lua_State *L) {
     void *old = NULL;
     wm_unbind_key(current_wm(L), &combo, &old);
     if (old) {
-        keybind_free(old);
+        lua_callback_free(old);
     }
 
     return 0;
@@ -265,6 +311,7 @@ static int luaopen_libuniwm(lua_State *L) {
         { "list", l_vdesk_list },
         { "current", l_vdesk_current },
         { "create", l_vdesk_create },
+        { "on_changed", l_vdesk_on_changed },
         { NULL, NULL },
     };
 
