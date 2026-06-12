@@ -16,11 +16,11 @@ local function layout_vdesk (desktop, managed)
     end
 end
 
-uniwm.virtual_desktop.on_changed(layout_vdesk)
-layout_vdesk(uniwm.virtual_desktop.current(), true)
+uniwm.vdesktop:on_changed(layout_vdesk)
+layout_vdesk(uniwm.vdesktop:current(), true)
 
-for i = #uniwm.virtual_desktop.list() + 1, 10 do
-    uniwm.virtual_desktop.create("Desktop " .. i)
+for i = #uniwm.vdesktop:list() + 1, 10 do
+    uniwm.vdesktop:create("Desktop " .. i)
 end
 
 uniwm.supress_key("SUPER_L")
@@ -37,7 +37,7 @@ uniwm.register_keybind("SUPER_L + SHIFT_L + C", function()
     end
 end)
 
-local list = uniwm.virtual_desktop.list()
+local list = uniwm.vdesktop:list()
 
 for i = 1, 10 do
     local combo = "SUPER_L + " .. (i % 10)

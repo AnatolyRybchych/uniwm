@@ -141,26 +141,26 @@ static void vdesk_changed_cb(WM_VDesktop *current, WM_VDesktopChangeSource sourc
     lua_pushstring(L, source == WM_VDESKTOP_CHANGE_MANAGED ? "managed" : "external");
 
     if (lua_pcall(L, 2, 0, 0) != LUA_OK) {
-        fprintf(stderr, "uniwm: virtual_desktop.on_changed callback error: %s\n", lua_tostring(L, -1));
+        fprintf(stderr, "uniwm: vdesktop:on_changed callback error: %s\n", lua_tostring(L, -1));
         lua_pop(L, 1);
     }
 }
 
 static int l_vdesk_on_changed(lua_State *L) {
-    luaL_checktype(L, 1, LUA_TFUNCTION);
+    luaL_checktype(L, 2, LUA_TFUNCTION);
     WM *wm = current_wm(L);
 
     LuaCallback *k = NULL;
     if (mc_alloc(wm_allocator, sizeof(*k), (void **)&k) != MCE_OK) {
-        return luaL_error(L, "uniwm.virtual_desktop.on_changed: out of memory");
+        return luaL_error(L, "uniwm.vdesktop:on_changed: out of memory");
     }
     k->L = L;
-    lua_pushvalue(L, 1);
+    lua_pushvalue(L, 2);
     k->ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
     if (wm_vdesktop_on_changed(wm, vdesk_changed_cb, k) != WM_ERROR_OK) {
         lua_callback_free(k);
-        return luaL_error(L, "uniwm.virtual_desktop.on_changed: failed");
+        return luaL_error(L, "uniwm.vdesktop:on_changed: failed");
     }
 
     return 0;
@@ -180,12 +180,12 @@ static int l_vdesk_list(lua_State *L) {
 }
 
 static int l_vdesk_create(lua_State *L) {
-    const char *name = luaL_checkstring(L, 1);
+    const char *name = luaL_checkstring(L, 2);
     WM *wm = current_wm(L);
 
     WM_VDesktop *d = NULL;
     if (wm_vdesktop_create(wm, mc_strc(name), &d) != WM_ERROR_OK) {
-        return luaL_error(L, "uniwm.virtual_desktop.create: failed");
+        return luaL_error(L, "uniwm.vdesktop:create: failed");
     }
 
     WM_VDesktopSpan span = wm_vdesktops(wm);
@@ -318,7 +318,7 @@ static int luaopen_libuniwm(lua_State *L) {
     lua_createtable(L, 0, 3);
 
     luaL_newlib(L, vdesk_fns);
-    lua_setfield(L, -2, "virtual_desktop");
+    lua_setfield(L, -2, "vdesktop");
 
     lua_pushcfunction(L, l_supress_key);
     lua_setfield(L, -2, "supress_key");
