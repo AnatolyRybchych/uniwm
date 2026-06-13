@@ -328,6 +328,59 @@ static int l_register_keybind(lua_State *L) {
     return 0;
 }
 
+static void window_event_cb(MC_WindowRef *window, void *ctx) {
+    LuaCallback *k = ctx;
+    lua_State *L = k->L;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, k->ref);
+    mc_wm_lua_push_window(L, mc_wm_window_ref(window));
+
+    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+        fprintf(stderr, "uniwm: window event callback error: %s\n", lua_tostring(L, -1));
+        lua_pop(L, 1);
+    }
+}
+
+static int l_on_window_created(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TFUNCTION);
+    WM *wm = current_wm(L);
+
+    LuaCallback *k = NULL;
+    if (mc_alloc(wm_allocator, sizeof(*k), (void **)&k) != MCE_OK) {
+        return luaL_error(L, "uniwm.on_window_created: out of memory");
+    }
+    k->L = L;
+    lua_pushvalue(L, 1);
+    k->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    if (wm_on_window_created(wm, window_event_cb, k) != WM_ERROR_OK) {
+        lua_callback_free(k);
+        return luaL_error(L, "uniwm.on_window_created: failed");
+    }
+
+    return 0;
+}
+
+static int l_on_window_destroyed(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TFUNCTION);
+    WM *wm = current_wm(L);
+
+    LuaCallback *k = NULL;
+    if (mc_alloc(wm_allocator, sizeof(*k), (void **)&k) != MCE_OK) {
+        return luaL_error(L, "uniwm.on_window_destroyed: out of memory");
+    }
+    k->L = L;
+    lua_pushvalue(L, 1);
+    k->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    if (wm_on_window_destroyed(wm, window_event_cb, k) != WM_ERROR_OK) {
+        lua_callback_free(k);
+        return luaL_error(L, "uniwm.on_window_destroyed: failed");
+    }
+
+    return 0;
+}
+
 static int l_unregister_keybind(lua_State *L) {
     const char *spec = luaL_checkstring(L, 1);
 
@@ -367,6 +420,10 @@ static int luaopen_libuniwm(lua_State *L) {
     lua_setfield(L, -2, "register_keybind");
     lua_pushcfunction(L, l_unregister_keybind);
     lua_setfield(L, -2, "unregister_keybind");
+    lua_pushcfunction(L, l_on_window_created);
+    lua_setfield(L, -2, "on_window_created");
+    lua_pushcfunction(L, l_on_window_destroyed);
+    lua_setfield(L, -2, "on_window_destroyed");
 
     return 1;
 }

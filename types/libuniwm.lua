@@ -64,4 +64,17 @@ function libuniwm.register_keybind(spec, fn) end
 ---@param spec string
 function libuniwm.unregister_keybind(spec) end
 
+--- Subscribe to window creation. `fn` is called with each new **root application
+--- window** (an `mc.wm` window) when it is first shown — child/control windows and
+--- tool/infra windows (tooltips, IME, OLE helpers) are excluded. Registering this
+--- turns the process into a daemon (the event loop runs even without keybinds).
+---@param fn fun(window: mcwm.Window)
+function libuniwm.on_window_created(fn) end
+
+--- Subscribe to window destruction. `fn` is called with each window as it is
+--- destroyed (an `mc.wm` window). The native handle is already gone, so query its
+--- identity (e.g. to match a previously tracked window) rather than its live state.
+---@param fn fun(window: mcwm.Window)
+function libuniwm.on_window_destroyed(fn) end
+
 return libuniwm
