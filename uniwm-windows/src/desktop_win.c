@@ -364,9 +364,20 @@ static WM_Error win_init(MC_Alloc *alloc, WM_Target **out) {
     return WM_ERROR_OK;
 }
 
+static WM_WindowChangeSink window_sink = NULL;
+static void *window_sink_ctx = NULL;
+static HWINEVENTHOOK window_event_hook = NULL;
+
 static void win_destroy(WM_Target *t) {
     if (!t) {
         return;
+    }
+
+    if (window_event_hook) {
+        UnhookWinEvent(window_event_hook);
+        window_event_hook = NULL;
+        window_sink = NULL;
+        window_sink_ctx = NULL;
     }
 
     WM_VDesktop **it;
@@ -590,6 +601,63 @@ static WM_Error win_vdesk_size(WM_Target *t, const WM_VDesktop *vdesk, MC_Size2U
     return WM_ERROR_OK;
 }
 
+static bool is_root_window(HWND hwnd) {
+    if (GetAncestor(hwnd, GA_ROOT) != hwnd) {
+        return false;
+    }
+
+    LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    if (style & WS_CHILD) {
+        return false;
+    }
+
+    LONG_PTR ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    if (ex_style & WS_EX_TOOLWINDOW) {
+        return false;
+    }
+
+    return true;
+}
+
+static void CALLBACK win_event_proc(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG id_object, LONG id_child, DWORD thread, DWORD time) {
+    (void)hook;
+    (void)thread;
+    (void)time;
+
+    if (window_sink == NULL || hwnd == NULL) {
+        return;
+    }
+
+    if (id_object != OBJID_WINDOW || id_child != CHILDID_SELF) {
+        return;
+    }
+
+    if (event == EVENT_OBJECT_SHOW) {
+        if (!is_root_window(hwnd)) {
+            return;
+        }
+        window_sink(window_sink_ctx, (uint64_t)(uintptr_t)hwnd, WM_WINDOW_CREATED);
+    } else if (event == EVENT_OBJECT_DESTROY) {
+        window_sink(window_sink_ctx, (uint64_t)(uintptr_t)hwnd, WM_WINDOW_DESTROYED);
+    }
+}
+
+static WM_Error win_on_window_changed(WM_Target *t, WM_WindowChangeSink sink, void *ctx) {
+    (void)t;
+
+    window_sink = sink;
+    window_sink_ctx = ctx;
+
+    if (window_event_hook == NULL) {
+        window_event_hook = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_SHOW, NULL, win_event_proc, 0, 0, WINEVENT_OUTOFCONTEXT);
+        if (window_event_hook == NULL) {
+            return WM_ERROR_UNKNOWN;
+        }
+    }
+
+    return WM_ERROR_OK;
+}
+
 static const WM_TargetInterface windows_interface = {
     .init = win_init,
     .destroy = win_destroy,
@@ -601,6 +669,7 @@ static const WM_TargetInterface windows_interface = {
     .vdesk_windows = win_vdesk_windows,
     .vdesk_size = win_vdesk_size,
     .vdesk_move_window = win_vdesk_move_window,
+    .on_window_changed = win_on_window_changed,
 };
 
 const WM_TargetInterface *const uniwm_windows_target = &windows_interface;
