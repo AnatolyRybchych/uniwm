@@ -54,10 +54,6 @@
 ---@field position? mcwm.Position
 ---@field state? mcwm.WindowState
 
----@class mcwm.Event
----@field type mcwm.EventType
----@field key? integer
-
 ---@class mcwm.Window
 local Window = {}
 
@@ -120,6 +116,9 @@ function Window:focus() end
 --- Destroy a window this WM owns (created via `WM:create_window`).
 function Window:destroy() end
 
+--- A reference to the shared window manager. The host (e.g. uniwm) owns the WM and
+--- runs the event loop; scripts only ever hold references — there is intentionally no
+--- `poll_event` here. Operations raise once the owner has destroyed the WM.
 ---@class mcwm.WM
 local WM = {}
 
@@ -135,9 +134,6 @@ function WM:get_hovered_window() end
 
 ---@return mcwm.Window[]
 function WM:get_all_windows() end
-
----@return mcwm.Event? # nil if the queue is empty
-function WM:poll_event() end
 
 ---@class mcwm.Subscription
 local Subscription = {}
@@ -155,12 +151,15 @@ function Subscription:unsubscribe() end
 ---@return mcwm.Subscription
 function WM:on_event(event_type, callback) end
 
+--- Release this reference to the WM. Does not tear down the WM itself — the owner
+--- keeps it alive until the last reference is dropped.
 function WM:destroy() end
 
 ---@class mcwm
 local mcwm = {}
 
---- Resolve the shared window manager (creates it on first use).
+--- Get a reference to the shared window manager (lazily created on first use if no
+--- host has created one).
 ---@param impl? string # require a specific backend, e.g. "WIN32"
 ---@return mcwm.WM
 function mcwm.resolve(impl) end
