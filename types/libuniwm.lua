@@ -26,6 +26,23 @@ function Desktop:move_window(window) end
 --- "external" (another API, e.g. WIN+TAB — not yet detected).
 ---@alias libuniwm.ChangeSource "managed"|"external"
 
+--- Event passed to subscription callbacks. A tagged table discriminated by `type`;
+--- more event types/fields may be added in the future.
+---@class libuniwm.Event.VDesktopChanged
+---@field type "vdesktop_changed"
+---@field desktop libuniwm.Desktop
+---@field source libuniwm.ChangeSource
+
+---@class libuniwm.Event.WindowCreated
+---@field type "window_created"
+---@field window mcwm.Window
+
+---@class libuniwm.Event.WindowDestroyed
+---@field type "window_destroyed"
+---@field window mcwm.Window
+
+---@alias libuniwm.Event libuniwm.Event.VDesktopChanged | libuniwm.Event.WindowCreated | libuniwm.Event.WindowDestroyed
+
 ---@class libuniwm.VirtualDesktop
 local VirtualDesktop = {}
 
@@ -39,8 +56,17 @@ function VirtualDesktop:current() end
 ---@return libuniwm.Desktop?
 function VirtualDesktop:create(name) end
 
+--- An event subscription. Stays active until `:unsubscribe()` is called (or the
+--- process exits); it is NOT released by garbage collection.
+---@class libuniwm.Subscription
+local Subscription = {}
+
+--- Stop receiving the event. Idempotent.
+function Subscription:unsubscribe() end
+
 --- Subscribe to desktop-change notifications. Multiple subscribers allowed.
----@param fn fun(desktop: libuniwm.Desktop, source: libuniwm.ChangeSource)
+---@param fn fun(event: libuniwm.Event.VDesktopChanged)
+---@return libuniwm.Subscription
 function VirtualDesktop:on_changed(fn) end
 
 ---@class libuniwm
@@ -64,17 +90,20 @@ function libuniwm.register_keybind(spec, fn) end
 ---@param spec string
 function libuniwm.unregister_keybind(spec) end
 
---- Subscribe to window creation. `fn` is called with each new **root application
---- window** (an `mc.wm` window) when it is first shown — child/control windows and
---- tool/infra windows (tooltips, IME, OLE helpers) are excluded. Registering this
---- turns the process into a daemon (the event loop runs even without keybinds).
----@param fn fun(window: mcwm.Window)
+--- Subscribe to window creation. `fn` is called with a `window_created` event whose
+--- `window` is a new **root application window** (an `mc.wm` window) as it is first
+--- shown — child/control windows and tool/infra windows (tooltips, IME, OLE helpers)
+--- are excluded. Registering this turns the process into a daemon (the event loop
+--- runs even without keybinds).
+---@param fn fun(event: libuniwm.Event.WindowCreated)
+---@return libuniwm.Subscription
 function libuniwm.on_window_created(fn) end
 
---- Subscribe to window destruction. `fn` is called with each window as it is
---- destroyed (an `mc.wm` window). The native handle is already gone, so query its
---- identity (e.g. to match a previously tracked window) rather than its live state.
----@param fn fun(window: mcwm.Window)
+--- Subscribe to window destruction. `fn` is called with a `window_destroyed` event;
+--- `event.window`'s native handle is already gone, so query its identity (e.g. to
+--- match a previously tracked window) rather than its live state.
+---@param fn fun(event: libuniwm.Event.WindowDestroyed)
+---@return libuniwm.Subscription
 function libuniwm.on_window_destroyed(fn) end
 
 return libuniwm
