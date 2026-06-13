@@ -9,6 +9,7 @@
 #include <uniwm/vdesktop.h>
 
 typedef void (*WM_WindowHandleSink)(void *ctx, uint64_t handle);
+typedef void (*WM_WindowChangeSink)(void *ctx, uint64_t handle, WM_WindowChange change);
 
 struct WM_TargetInterface {
     WM_Error (*init)(MC_Alloc *alloc, WM_Target **target);
@@ -25,6 +26,8 @@ struct WM_TargetInterface {
     WM_Error (*vdesk_windows)(WM_Target *target, const WM_VDesktop *vdesk, WM_WindowHandleSink sink, void *ctx);
     WM_Error (*vdesk_size)(WM_Target *target, const WM_VDesktop *vdesk, MC_Size2U *out);
     WM_Error (*vdesk_move_window)(WM_Target *target, const WM_VDesktop *vdesk, uint64_t handle);
+
+    WM_Error (*on_window_changed)(WM_Target *target, WM_WindowChangeSink sink, void *ctx);
 };
 
 #endif

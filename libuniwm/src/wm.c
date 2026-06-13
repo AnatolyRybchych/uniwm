@@ -225,6 +225,18 @@ WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_
     return status;
 }
 
+WM_Error wm_watch_window_changed(WM *wm, void (*sink)(void *ctx, uint64_t handle, WM_WindowChange change), void *ctx) {
+    if (wm == NULL || sink == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (wm->target_interface->on_window_changed == NULL) {
+        return WM_ERROR_NOT_IMPLEMENTED;
+    }
+
+    return wm->target_interface->on_window_changed(wm->target, sink, ctx);
+}
+
 WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out) {
     if (wm == NULL || vdesk == NULL || out == NULL) {
         return WM_ERROR_INVALID_ARGUMENT;

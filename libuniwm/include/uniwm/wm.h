@@ -29,6 +29,11 @@ typedef enum WM_VDesktopChangeSource {
 
 typedef void (*WM_VDesktopChangeCb)(WM_VDesktop *current, WM_VDesktopChangeSource source, void *ctx);
 
+typedef enum WM_WindowChange {
+    WM_WINDOW_CREATED,
+    WM_WINDOW_DESTROYED,
+} WM_WindowChange;
+
 typedef struct WM_VDesktopChangeSub {
     WM_VDesktopChangeCb cb;
     void *ctx;
@@ -60,6 +65,10 @@ WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_
 WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out);
 WM_Error wm_vdesktop_move_window(WM *wm, const WM_VDesktop *vdesk, uint64_t handle);
 WM_Error wm_vdesktop_on_changed(WM *wm, WM_VDesktopChangeCb cb, void *ctx);
+
+WM_Error wm_on_window_created(WM *wm, void (*cb)(MC_WindowRef *window, void *ctx), void *ctx);
+WM_Error wm_on_window_destroyed(WM *wm, void (*cb)(MC_WindowRef *window, void *ctx), void *ctx);
+WM_Error wm_watch_window_changed(WM *wm, void (*sink)(void *ctx, uint64_t handle, WM_WindowChange change), void *ctx);
 
 WM_Error wm_input_ensure(void);
 
