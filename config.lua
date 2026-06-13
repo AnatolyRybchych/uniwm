@@ -32,6 +32,23 @@ local function list(tab)
     return res
 end
 
+local function dump(value, indent)
+    indent = indent or ""
+    if type(value) ~= "table" then
+        print(indent .. tostring(value))
+        return
+    end
+
+    for k, v in pairs(value) do
+        if type(v) == "table" then
+            print(indent .. tostring(k) .. ":")
+            dump(v, indent .. "  ")
+        else
+            print(indent .. tostring(k) .. " = " .. tostring(v))
+        end
+    end
+end
+
 local function layout_vdesk (desktop, managed)    
     print('------------------------------')
     print(string.format('DESKTOP CHANGED to %s [%s]', desktop.name , managed))
@@ -101,6 +118,6 @@ for i = 1, 10 do
     end)
 end
 
-wm:on_event("GLOBAL_KEY_DOWN", function ()
-    print("GLOBAL_KEY_DOWN")
+wm:on_event(nil, function (evt)
+    print(evt.type)
 end)
