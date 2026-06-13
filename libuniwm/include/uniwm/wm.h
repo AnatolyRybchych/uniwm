@@ -27,24 +27,41 @@ typedef enum WM_VDesktopChangeSource {
     WM_VDESKTOP_CHANGE_EXTERNAL,
 } WM_VDesktopChangeSource;
 
-typedef void (*WM_VDesktopChangeCb)(WM_VDesktop *current, WM_VDesktopChangeSource source, void *ctx);
-
 typedef enum WM_WindowChange {
     WM_WINDOW_CREATED,
     WM_WINDOW_DESTROYED,
 } WM_WindowChange;
 
-typedef struct WM_VDesktopChangeSub {
-    WM_VDesktopChangeCb cb;
-    void *ctx;
-} WM_VDesktopChangeSub;
+typedef enum WM_EventType {
+    WM_EVENT_VDESKTOP_CHANGED,
+    WM_EVENT_WINDOW_CREATED,
+    WM_EVENT_WINDOW_DESTROYED,
+} WM_EventType;
 
-MC_DEFINE_VECTOR(WM_VDesktopChangeSubList, WM_VDesktopChangeSub);
+typedef struct WM_Event {
+    WM_EventType type;
+    union {
+        struct {
+            WM_VDesktop *desktop;
+            WM_VDesktopChangeSource source;
+        } vdesktop_changed;
+
+        struct {
+            MC_WindowRef *window;
+        } window_created;
+
+        struct {
+            MC_WindowRef *window;
+        } window_destroyed;
+    } as;
+} WM_Event;
+
+typedef struct WM_Subscription WM_Subscription;
 
 struct WM {
     const WM_TargetInterface *target_interface;
     WM_Target *target;
-    WM_VDesktopChangeSubList *change_subs;
+    WM_Subscription *subs;
 };
 
 WM_Error wm_init(WM *wm, const WM_TargetInterface *ti, MC_Alloc *alloc);
@@ -64,11 +81,13 @@ MC_Str wm_vdesktop_name(WM *wm, const WM_VDesktop *vdesk);
 WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_WindowRef *window, void *ctx), void *ctx);
 WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out);
 WM_Error wm_vdesktop_move_window(WM *wm, const WM_VDesktop *vdesk, uint64_t handle);
-WM_Error wm_vdesktop_on_changed(WM *wm, WM_VDesktopChangeCb cb, void *ctx);
+WM_Error wm_subscribe(WM *wm, WM_EventType type, void (*cb)(const WM_Event *event, void *user_data), void *user_data, WM_Subscription **out);
+void wm_unsubscribe(WM_Subscription *sub);
+void wm_dispatch_event(WM *wm, const WM_Event *event);
+bool wm_has_subscribers(WM *wm, WM_EventType type);
 
-WM_Error wm_on_window_created(WM *wm, void (*cb)(MC_WindowRef *window, void *ctx), void *ctx);
-WM_Error wm_on_window_destroyed(WM *wm, void (*cb)(MC_WindowRef *window, void *ctx), void *ctx);
 WM_Error wm_watch_window_changed(WM *wm, void (*sink)(void *ctx, uint64_t handle, WM_WindowChange change), void *ctx);
+WM_Error wm_window_watch_ensure(void);
 
 WM_Error wm_input_ensure(void);
 

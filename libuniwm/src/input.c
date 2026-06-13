@@ -14,7 +14,6 @@
 
 #define SUPPRESS_MAX 128
 #define KEYBIND_MAX 128
-#define WINDOW_SUB_MAX 64
 #define WINDOW_POLL_TICKS 8
 
 typedef struct Keybind {
@@ -22,11 +21,6 @@ typedef struct Keybind {
     void (*cb)(void *ctx);
     void *ctx;
 } Keybind;
-
-typedef struct WindowSub {
-    void (*cb)(MC_WindowRef *window, void *ctx);
-    void *ctx;
-} WindowSub;
 
 MC_DEFINE_VECTOR(IdentityList, uint64_t);
 
@@ -38,10 +32,6 @@ static Keybind keybinds[KEYBIND_MAX];
 static int keybind_count = 0;
 static bool suppress_down[MC_KEY_MAX];
 static bool keybind_down[MC_KEY_MAX];
-static WindowSub created_subs[WINDOW_SUB_MAX];
-static int created_count = 0;
-static WindowSub destroyed_subs[WINDOW_SUB_MAX];
-static int destroyed_count = 0;
 static bool window_watch = false;
 static bool window_poll = false;
 static IdentityList *known_windows = NULL;
@@ -234,22 +224,26 @@ static bool known_forget(uint64_t identity) {
     return false;
 }
 
-static void fire_subs(const WindowSub *subs, int count, MC_WindowRef *window) {
-    for (int i = 0; i < count; i++) {
-        subs[i].cb(window, subs[i].ctx);
+static void dispatch_window(MC_WindowRef *window, WM_WindowChange change) {
+    WM_Event event = {
+        .type = change == WM_WINDOW_CREATED ? WM_EVENT_WINDOW_CREATED : WM_EVENT_WINDOW_DESTROYED,
+    };
+    if (change == WM_WINDOW_CREATED) {
+        event.as.window_created.window = window;
+    } else {
+        event.as.window_destroyed.window = window;
     }
+
+    wm_dispatch_event(wm_process(), &event);
 }
 
 static void notify_change(uint64_t identity, WM_WindowChange change) {
-    MC_WMRef *ref = mc_wm_get_ref(input);
-
     MC_WindowRef *window;
-    if (mc_wm_resolve_window(ref, identity, &window) != MCE_OK) {
+    if (mc_wm_resolve_window(mc_wm_get_ref(input), identity, &window) != MCE_OK) {
         return;
     }
 
-    fire_subs(change == WM_WINDOW_CREATED ? created_subs : destroyed_subs,
-              change == WM_WINDOW_CREATED ? created_count : destroyed_count, window);
+    dispatch_window(window, change);
 
     mc_wm_window_unref(window);
 }
@@ -270,7 +264,7 @@ static MC_Error window_visit(MC_WindowRef *window, void *ctx) {
         }
 
         if (poll->fire && !identity_in(known_windows, identity)) {
-            fire_subs(created_subs, created_count, window);
+            dispatch_window(window, WM_WINDOW_CREATED);
         }
     }
 
@@ -286,7 +280,7 @@ static void poll_windows(bool fire) {
     WindowPoll poll = { .seen = NULL, .fire = fire };
     mc_wm_get_all_windows(mc_wm_get_ref(input), window_visit, &poll);
 
-    if (fire && destroyed_count > 0) {
+    if (fire && wm_has_subscribers(wm_process(), WM_EVENT_WINDOW_DESTROYED)) {
         uint64_t *it;
         MC_VECTOR_EACH(known_windows, it) {
             if (!identity_in(poll.seen, *it)) {
@@ -325,9 +319,9 @@ static void target_window_sink(void *ctx, uint64_t handle, WM_WindowChange chang
     notify_change(identity, change);
 }
 
-static WM_Error add_window_sub(WM *wm, WindowSub *subs, int *count, void (*cb)(MC_WindowRef *window, void *ctx), void *ctx) {
-    if (cb == NULL) {
-        return WM_ERROR_INVALID_ARGUMENT;
+WM_Error wm_window_watch_ensure(void) {
+    if (window_watch) {
+        return WM_ERROR_OK;
     }
 
     WM_Error e = wm_input_ensure();
@@ -335,31 +329,14 @@ static WM_Error add_window_sub(WM *wm, WindowSub *subs, int *count, void (*cb)(M
         return e;
     }
 
-    if (*count >= WINDOW_SUB_MAX) {
-        return WM_ERROR_OUT_OF_MEMORY;
-    }
+    window_watch = true;
+    poll_windows(false);
 
-    bool first = !window_watch;
-    subs[(*count)++] = (WindowSub){ .cb = cb, .ctx = ctx };
-
-    if (first) {
-        window_watch = true;
-        poll_windows(false);
-
-        if (wm_watch_window_changed(wm, target_window_sink, NULL) != WM_ERROR_OK) {
-            window_poll = true;
-        }
+    if (wm_watch_window_changed(wm_process(), target_window_sink, NULL) != WM_ERROR_OK) {
+        window_poll = true;
     }
 
     return WM_ERROR_OK;
-}
-
-WM_Error wm_on_window_created(WM *wm, void (*cb)(MC_WindowRef *window, void *ctx), void *ctx) {
-    return add_window_sub(wm, created_subs, &created_count, cb, ctx);
-}
-
-WM_Error wm_on_window_destroyed(WM *wm, void (*cb)(MC_WindowRef *window, void *ctx), void *ctx) {
-    return add_window_sub(wm, destroyed_subs, &destroyed_count, cb, ctx);
 }
 
 WM_Error wm_run(void) {
