@@ -118,6 +118,10 @@ for i = 1, 10 do
     end)
 end
 
-wm:on_event(nil, function (evt)
-    print(evt.type)
+uniwm.on_window_created(function (window)
+    print(window:get_title())
+end)
+
+uniwm.on_window_destroyed(function (window)
+    print(window:get_title())
 end)
