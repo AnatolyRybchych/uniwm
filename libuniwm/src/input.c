@@ -20,6 +20,7 @@ typedef struct Keybind {
 } Keybind;
 
 static MC_WM *input = NULL;
+static bool input_loop = false;
 static WM_KeyCombo suppressions[SUPPRESS_MAX];
 static int suppression_count = 0;
 static Keybind keybinds[KEYBIND_MAX];
@@ -72,18 +73,29 @@ static bool suppress_cb(MC_TargetWM *tw, MC_Key key, bool down) {
     return false;
 }
 
-static WM_Error ensure_input(void) {
+WM_Error wm_input_ensure(void) {
     if (input != NULL) {
         return WM_ERROR_OK;
     }
 
-    if (mc_wm_resolve(&input) != MCE_OK) {
+    if (mc_wm_init(&input, mc_win32_wm_vtab) != MCE_OK) {
         input = NULL;
         return WM_ERROR_UNKNOWN;
     }
 
-    mc_wm_request_events(input, MC_WM_EVENTS_GLOBAL_KEYBOARD);
-    mc_wm_win32_set_keyboard_suppress(mc_wm_get_target(input), suppress_cb);
+    mc_wm_win32_set_keyboard_suppress(mc_wm_get_target(mc_wm_get_ref(input)), suppress_cb);
+
+    return WM_ERROR_OK;
+}
+
+static WM_Error enable_keyboard(void) {
+    WM_Error e = wm_input_ensure();
+    if (e != WM_ERROR_OK) {
+        return e;
+    }
+
+    mc_wm_request_events(mc_wm_get_ref(input), MC_WM_EVENTS_GLOBAL_KEYBOARD);
+    input_loop = true;
 
     return WM_ERROR_OK;
 }
@@ -95,7 +107,7 @@ WM_Error wm_suppress_key(WM *wm, const WM_KeyCombo *combo) {
         return WM_ERROR_INVALID_ARGUMENT;
     }
 
-    WM_Error e = ensure_input();
+    WM_Error e = enable_keyboard();
     if (e != WM_ERROR_OK) {
         return e;
     }
@@ -133,7 +145,7 @@ WM_Error wm_bind_key(WM *wm, const WM_KeyCombo *combo, void (*cb)(void *ctx), vo
         return WM_ERROR_INVALID_ARGUMENT;
     }
 
-    WM_Error e = ensure_input();
+    WM_Error e = enable_keyboard();
     if (e != WM_ERROR_OK) {
         return e;
     }
@@ -171,14 +183,14 @@ WM_Error wm_unbind_key(WM *wm, const WM_KeyCombo *combo, void **out_ctx) {
 }
 
 WM_Error wm_run(void) {
-    if (input == NULL) {
+    if (!input_loop) {
         return WM_ERROR_OK;
     }
 
     for (;;) {
         MC_WMEvent event;
         while (mc_wm_poll_event(input, &event) == MCE_OK) {
-            mc_wm_dispatch_event_callbacks(input, &event);
+            mc_wm_dispatch_event_callbacks(mc_wm_get_ref(input), &event);
 
             MC_Key key;
             bool down;

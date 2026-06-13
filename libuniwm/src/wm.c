@@ -47,6 +47,7 @@ void wm_set_default(const WM_TargetInterface *ti) {
     default_ti = ti;
 
     mc_wm_resolver_register(mc_win32_wm_vtab);
+    wm_input_ensure();
 }
 
 WM *wm_process(void) {
@@ -174,7 +175,7 @@ MC_Str wm_vdesktop_name(WM *wm, const WM_VDesktop *vdesk) {
 }
 
 typedef struct WM_VDesktopWindowsCtx {
-    MC_WM *mc_wm;
+    MC_WMRef *mc_wm;
     MC_TargetWM *target;
     void (*visit)(MC_WindowRef *window, void *ctx);
     void *ctx;
@@ -205,7 +206,7 @@ WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_
         return WM_ERROR_NOT_IMPLEMENTED;
     }
 
-    MC_WM *mc_wm;
+    MC_WMRef *mc_wm;
     if (mc_wm_resolve(&mc_wm) != MCE_OK) {
         return WM_ERROR_UNKNOWN;
     }
@@ -217,7 +218,11 @@ WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_
         .ctx = ctx,
     };
 
-    return wm->target_interface->vdesk_windows(wm->target, vdesk, resolve_window_handle, &c);
+    WM_Error status = wm->target_interface->vdesk_windows(wm->target, vdesk, resolve_window_handle, &c);
+
+    mc_wm_unref(mc_wm);
+
+    return status;
 }
 
 WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out) {
