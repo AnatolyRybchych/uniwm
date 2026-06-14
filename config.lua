@@ -121,9 +121,11 @@ for i = 1, 10 do
 end
 
 table.insert(subscriptions, uniwm.on_window_created(function (event)
-    print(event.window:get_title())
+    dump(event)
+    -- print(event.window:get_title())
 end))
 
 table.insert(subscriptions, uniwm.on_window_destroyed(function (event)
+    dump(event)
     print(event.window:get_title())
 end))
