@@ -74,7 +74,9 @@ local function layout_vdesk (desktop, managed)
     end
 end
 
-uniwm.vdesktop:on_changed(layout_vdesk)
+subscriptions = {
+    uniwm.vdesktop:on_changed(function (event) layout_vdesk(event.desktop, event.source) end)
+}
 layout_vdesk(uniwm.vdesktop:current(), true)
 for i = #uniwm.vdesktop:list() + 1, 10 do
     local desk_name = "Desktop " .. i
@@ -118,10 +120,10 @@ for i = 1, 10 do
     end)
 end
 
-uniwm.on_window_created(function (window)
-    print(window:get_title())
-end)
+table.insert(subscriptions, uniwm.on_window_created(function (event)
+    print(event.window:get_title())
+end))
 
-uniwm.on_window_destroyed(function (window)
-    print(window:get_title())
-end)
+table.insert(subscriptions, uniwm.on_window_destroyed(function (event)
+    print(event.window:get_title())
+end))
