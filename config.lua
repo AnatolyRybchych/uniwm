@@ -98,7 +98,6 @@ local list = uniwm.vdesktop:list()
 
 for i = 1, 10 do
     local switch_vdesk_hotkey = "SUPER_L + " .. (i % 10)
-    local move_window_hotkey = "SUPER_L + SHIFT_L + " .. (i % 10)
 
     uniwm.supress_key(switch_vdesk_hotkey)
     uniwm.register_keybind(switch_vdesk_hotkey, function()
@@ -111,13 +110,17 @@ for i = 1, 10 do
         end
     end)
 
-    uniwm.supress_key(move_window_hotkey)
-    uniwm.register_keybind(move_window_hotkey, function()
-        local window = wm:get_hovered_window()
-        if list[i] and window then
-            list[i]:move_window(window)
-        end
-    end)
+    for _, shift in ipairs({ "SHIFT_L", "SHIFT_R" }) do
+        local move_window_hotkey = "SUPER_L + " .. shift .. " + " .. (i % 10)
+
+        uniwm.supress_key(move_window_hotkey)
+        uniwm.register_keybind(move_window_hotkey, function()
+            local window = wm:get_hovered_window()
+            if list[i] and window then
+                list[i]:move_window(window)
+            end
+        end)
+    end
 end
 
 table.insert(subscriptions, uniwm.on_window_created(function (event)
@@ -129,3 +132,23 @@ table.insert(subscriptions, uniwm.on_window_destroyed(function (event)
     dump(event)
     print(event.window:get_title())
 end))
+
+wm:register_events("USER.DEMO", {
+    { name = "PING" },
+})
+
+table.insert(subscriptions, wm:on_event("USER.DEMO.PING", function (event)
+    dump(event)
+end))
+
+local pings = 0
+uniwm.supress_key("SUPER_L + SHIFT_L + P")
+uniwm.register_keybind("SUPER_L + SHIFT_L + P", function()
+    pings = pings + 1
+    local window = wm:get_hovered_window()
+    wm:send_event("USER.DEMO.PING", {
+        from = window and window:get_title() or "nowhere",
+        when = pings,
+    })
+end)
+
