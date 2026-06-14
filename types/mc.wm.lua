@@ -19,8 +19,11 @@
 
 --- Event type names — serialized `GROUP.TYPE` form (as `mc_wm_event_type_str` emits /
 --- `mc_wm_event_type_from_str` accepts). `"NONE"` matches every event (but prefer `nil`
---- in `WM:on_event`).
+--- in `WM:on_event`). Registered user events use `"USER.<group>.<event>"`; `string` is
+--- included so those (and any custom name) are accepted while the built-ins still offer
+--- completion.
 ---@alias mcwm.EventType
+---| string
 ---| "NONE"
 ---| "GENERIC.RAW"
 ---| "WINDOW.READY"
@@ -244,13 +247,33 @@ function Subscription:unsubscribe() end
 --- Register a callback for events. `event_type` is a serialized `GROUP.TYPE` event name
 --- (e.g. `"GLOBAL.KEY_DOWN"`) or `nil` to match every event. The callback receives the
 --- event as a table (see `mcwm.Event`); its `window` field is resolved lazily on
---- first access. Hold the returned subscription to keep it active and to be able to
---- `:unsubscribe()`. Callbacks fire from the host's event loop, which decides which
+--- first access. The subscription stays active until `:unsubscribe()` (or process exit) —
+--- you need not hold the returned handle to keep receiving events; keep it only if you want
+--- to `:unsubscribe()`. Callbacks fire from the host's event loop, which decides which
 --- events to dispatch.
 ---@param event_type? mcwm.EventType
 ---@param callback fun(event: mcwm.Event)
 ---@return mcwm.Subscription
 function WM:on_event(event_type, callback) end
+
+---@class mcwm.UserEventDef
+---@field name string
+
+--- Register a user event subgroup. `group` must start with `"USER."` (the prefix is
+--- reserved for future extension); `events` is an ordered list of `{name=...}` defs whose
+--- full event names become `<group>.<name>` (e.g. `"USER.TEST.ALERT"`). Errors if `group`
+--- does not start with `"USER."` or if the subgroup is already registered.
+---@param group string # e.g. "USER.TEST"
+---@param events mcwm.UserEventDef[]
+function WM:register_events(group, events) end
+
+--- Enqueue a user event for delivery (FIFO, ahead of target events). `name` is a full
+--- registered user-event name (e.g. `"USER.TEST.MESSAGE"`) and must start with `"USER."`;
+--- `data` is an optional table serialized into the event payload (JSON). Errors if `name`
+--- does not start with `"USER."` or is not a registered event.
+---@param name string # e.g. "USER.TEST.MESSAGE"
+---@param data? table
+function WM:send_event(name, data) end
 
 --- Release this reference to the WM. Does not tear down the WM itself — the owner
 --- keeps it alive until the last reference is dropped.
