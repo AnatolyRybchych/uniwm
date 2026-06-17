@@ -12,6 +12,8 @@ typedef void (*WM_WindowHandleSink)(void *ctx, uint64_t handle);
 typedef void (*WM_WindowChangeSink)(void *ctx, uint64_t handle, WM_WindowChange change);
 
 struct WM_TargetInterface {
+    WM_TargetCapabilities capabilities;
+
     WM_Error (*init)(MC_Alloc *alloc, WM_Target **target);
     void (*destroy)(WM_Target *target);
 

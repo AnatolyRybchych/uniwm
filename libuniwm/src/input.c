@@ -9,8 +9,10 @@
 #include <mc/wm/resolver.h>
 #include <mc/win32_wm/wm.h>
 #include <mc/data/vector.h>
+#include <mc/data/json.h>
 
 #include <uniwm/wm.h>
+#include <uniwm/target.h>
 
 #define SUPPRESS_MAX 128
 #define KEYBIND_MAX 128
@@ -35,6 +37,9 @@ static bool keybind_down[MC_KEY_MAX];
 static bool window_watch = false;
 static bool window_poll = false;
 static IdentityList *known_windows = NULL;
+
+static MC_WMEventType uniwm_event_offset = MC_WME_NONE;
+static unsigned window_poll_tick = 0;
 
 static bool combo_eq(const WM_KeyCombo *a, const WM_KeyCombo *b) {
     if (a->count != b->count) {
@@ -93,7 +98,34 @@ WM_Error wm_input_ensure(void) {
 
     mc_wm_win32_set_keyboard_suppress(mc_wm_get_target(mc_wm_get_ref(input)), suppress_cb);
 
+    static const MC_WMEventDefinition uniwm_events[WM_UNIWM_EVENT_COUNT] = {
+        [WM_UNIWM_VDESKTOP_CHANGED] = { .name = "VDESKTOP_CHANGED" },
+        [WM_UNIWM_WINDOW_CREATED] = { .name = "WINDOW_CREATED" },
+        [WM_UNIWM_WINDOW_DESTROYED] = { .name = "WINDOW_DESTROYED" },
+    };
+    MC_WMEventGroupDef uniwm_group = {
+        .name = "UNIWM",
+        .events = uniwm_events,
+        .size = WM_UNIWM_EVENT_COUNT,
+        .reserve = 0,
+        .to_json = NULL,
+        .from_json = NULL,
+    };
+    mc_wm_register_event_group(mc_wm_get_ref(input), &uniwm_group, &uniwm_event_offset);
+
     return WM_ERROR_OK;
+}
+
+MC_WM *wm_input(void) {
+    return input;
+}
+
+MC_WMEventType wm_uniwm_event_type(WM_UniwmEvent which) {
+    if (uniwm_event_offset == MC_WME_NONE || which >= WM_UNIWM_EVENT_COUNT) {
+        return MC_WME_NONE;
+    }
+
+    return (MC_WMEventType)(uniwm_event_offset + which);
 }
 
 static WM_Error enable_keyboard(void) {
@@ -224,28 +256,45 @@ static bool known_forget(uint64_t identity) {
     return false;
 }
 
-static void dispatch_window(MC_WindowRef *window, WM_WindowChange change) {
-    WM_Event event = {
-        .type = change == WM_WINDOW_CREATED ? WM_EVENT_WINDOW_CREATED : WM_EVENT_WINDOW_DESTROYED,
-    };
-    if (change == WM_WINDOW_CREATED) {
-        event.as.window_created.window = window;
-    } else {
-        event.as.window_destroyed.window = window;
-    }
-
-    wm_dispatch_event(wm_process(), &event);
-}
-
-static void notify_change(uint64_t identity, WM_WindowChange change) {
-    MC_WindowRef *window;
-    if (mc_wm_resolve_window(mc_wm_get_ref(input), identity, &window) != MCE_OK) {
+static void emit_window_event(uint64_t identity, WM_WindowChange change) {
+    MC_WMEventType type = wm_uniwm_event_type(change == WM_WINDOW_CREATED ? WM_UNIWM_WINDOW_CREATED : WM_UNIWM_WINDOW_DESTROYED);
+    if (input == NULL || type == MC_WME_NONE) {
         return;
     }
 
-    dispatch_window(window, change);
+    MC_WMRef *ref = mc_wm_get_ref(input);
+    MC_WMEvent event;
+    if (mc_wm_event(ref, type, &event) != MCE_OK) {
+        return;
+    }
 
-    mc_wm_window_unref(window);
+    mc_json_set_object((MC_Json*)event.as.raw);
+    mc_json_object_add_u64((MC_Json*)event.as.raw, identity, "window");
+
+    mc_wm_push_event(ref, &event);
+}
+
+WM_Error wm_resolve_window(uint64_t identity, MC_WindowRef **out) {
+    if (out == NULL) {
+        return WM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (wm_input_ensure() != WM_ERROR_OK) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    MC_WMRef *ref = mc_wm_get_ref(input);
+
+    uint64_t resolved;
+    if (mc_wm_win32_identity_from_hwnd(mc_wm_get_target(ref), (HWND)(uintptr_t)identity, &resolved) != MCE_OK) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    if (mc_wm_resolve_window(ref, resolved, out) != MCE_OK) {
+        return WM_ERROR_UNKNOWN;
+    }
+
+    return WM_ERROR_OK;
 }
 
 typedef struct WindowPoll {
@@ -264,7 +313,7 @@ static MC_Error window_visit(MC_WindowRef *window, void *ctx) {
         }
 
         if (poll->fire && !identity_in(known_windows, identity)) {
-            dispatch_window(window, WM_WINDOW_CREATED);
+            emit_window_event(identity, WM_WINDOW_CREATED);
         }
     }
 
@@ -280,11 +329,11 @@ static void poll_windows(bool fire) {
     WindowPoll poll = { .seen = NULL, .fire = fire };
     mc_wm_get_all_windows(mc_wm_get_ref(input), window_visit, &poll);
 
-    if (fire && wm_has_subscribers(wm_process(), WM_EVENT_WINDOW_DESTROYED)) {
+    if (fire) {
         uint64_t *it;
         MC_VECTOR_EACH(known_windows, it) {
             if (!identity_in(poll.seen, *it)) {
-                notify_change(*it, WM_WINDOW_DESTROYED);
+                emit_window_event(*it, WM_WINDOW_DESTROYED);
             }
         }
     }
@@ -311,12 +360,7 @@ static void target_window_sink(void *ctx, uint64_t handle, WM_WindowChange chang
         }
     }
 
-    uint64_t identity;
-    if (mc_wm_win32_identity_from_hwnd(mc_wm_get_target(mc_wm_get_ref(input)), (HWND)(uintptr_t)handle, &identity) != MCE_OK) {
-        return;
-    }
-
-    notify_change(identity, change);
+    emit_window_event(handle, change);
 }
 
 WM_Error wm_window_watch_ensure(void) {
@@ -332,62 +376,66 @@ WM_Error wm_window_watch_ensure(void) {
     window_watch = true;
     poll_windows(false);
 
-    if (wm_watch_window_changed(wm_process(), target_window_sink, NULL) != WM_ERROR_OK) {
+    WM *wm = wm_process();
+    bool reactive = wm != NULL
+        && (wm->target_interface->capabilities & WM_TARGET_CAP_WINDOW_EVENTS)
+        && wm->target_interface->on_window_changed != NULL
+        && wm->target_interface->on_window_changed(wm->target, target_window_sink, NULL) == WM_ERROR_OK;
+
+    if (!reactive) {
         window_poll = true;
     }
 
     return WM_ERROR_OK;
 }
 
-WM_Error wm_run(void) {
-    if (!input_loop && !window_watch) {
-        return WM_ERROR_OK;
+bool wm_should_run(void) {
+    return input_loop || window_watch;
+}
+
+void wm_process_event(const MC_WMEvent *event) {
+    if (event == NULL) {
+        return;
     }
 
-    unsigned tick = 0;
-    for (;;) {
-        MC_WMEvent event;
-        while (mc_wm_poll_event(input, &event) == MCE_OK) {
-            mc_wm_dispatch_event_callbacks(mc_wm_get_ref(input), &event);
-
-            MC_Key key;
-            bool down;
-            if (event.type == MC_WME_GLOBAL_KEY_DOWN) {
-                key = event.as.global_key_down.key;
-                down = true;
-            } else if (event.type == MC_WME_GLOBAL_KEY_UP) {
-                key = event.as.global_key_up.key;
-                down = false;
-            } else {
-                continue;
-            }
-
-            bool was_down = key < MC_KEY_MAX && keybind_down[key];
-            if (key < MC_KEY_MAX) {
-                keybind_down[key] = down;
-            }
-
-            if (down && !was_down) {
-                size_t best = 0;
-                for (int i = 0; i < keybind_count; i++) {
-                    if (combo_triggered(key, &keybinds[i].combo, keybind_down) && keybinds[i].combo.count > best) {
-                        best = keybinds[i].combo.count;
-                    }
-                }
-
-                for (int i = 0; i < keybind_count; i++) {
-                    if (keybinds[i].combo.count == best && combo_triggered(key, &keybinds[i].combo, keybind_down)) {
-                        keybinds[i].cb(keybinds[i].ctx);
-                    }
-                }
-            }
-        }
-
-        if (window_poll && tick % WINDOW_POLL_TICKS == 0) {
-            poll_windows(true);
-        }
-        tick++;
-
-        mc_sleep(&(MC_Time){.nsec = 16000000});
+    MC_Key key;
+    bool down;
+    if (event->type == MC_WME_GLOBAL_KEY_DOWN) {
+        key = event->as.global_key_down.key;
+        down = true;
+    } else if (event->type == MC_WME_GLOBAL_KEY_UP) {
+        key = event->as.global_key_up.key;
+        down = false;
+    } else {
+        return;
     }
+
+    bool was_down = key < MC_KEY_MAX && keybind_down[key];
+    if (key < MC_KEY_MAX) {
+        keybind_down[key] = down;
+    }
+
+    if (!down || was_down) {
+        return;
+    }
+
+    size_t best = 0;
+    for (int i = 0; i < keybind_count; i++) {
+        if (combo_triggered(key, &keybinds[i].combo, keybind_down) && keybinds[i].combo.count > best) {
+            best = keybinds[i].combo.count;
+        }
+    }
+
+    for (int i = 0; i < keybind_count; i++) {
+        if (keybinds[i].combo.count == best && combo_triggered(key, &keybinds[i].combo, keybind_down)) {
+            keybinds[i].cb(keybinds[i].ctx);
+        }
+    }
+}
+
+void wm_tick(void) {
+    if (window_poll && window_poll_tick % WINDOW_POLL_TICKS == 0) {
+        poll_windows(true);
+    }
+    window_poll_tick++;
 }

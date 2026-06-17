@@ -3,9 +3,11 @@
 #include <string.h>
 
 #include <mc/wm/key.h>
+#include <mc/wm/event.h>
 #include <mc/wm/resolver.h>
 #include <mc/win32_wm/wm.h>
 #include <mc/data/alloc.h>
+#include <mc/data/json.h>
 
 #include <uniwm/wm.h>
 #include <uniwm/target.h>
@@ -17,18 +19,9 @@ WM_Error wm_init(WM *wm, const WM_TargetInterface *ti, MC_Alloc *alloc) {
 
     wm->target_interface = ti;
     wm->target = NULL;
-    wm->subs = NULL;
 
     return ti->init(alloc, &wm->target);
 }
-
-struct WM_Subscription {
-    WM *wm;
-    WM_EventType type;
-    void (*cb)(const WM_Event *event, void *user_data);
-    void *user_data;
-    WM_Subscription *next;
-};
 
 void wm_fini(WM *wm) {
     if (!wm || !wm->target_interface) {
@@ -39,87 +32,7 @@ void wm_fini(WM *wm) {
         wm->target_interface->destroy(wm->target);
     }
 
-    while (wm->subs != NULL) {
-        WM_Subscription *next = wm->subs->next;
-        mc_free(wm_allocator, wm->subs);
-        wm->subs = next;
-    }
-
     wm->target = NULL;
-}
-
-WM_Error wm_subscribe(WM *wm, WM_EventType type, void (*cb)(const WM_Event *event, void *user_data), void *user_data, WM_Subscription **out) {
-    if (wm == NULL || cb == NULL) {
-        return WM_ERROR_INVALID_ARGUMENT;
-    }
-
-    WM_Subscription *sub = NULL;
-    if (mc_alloc(wm_allocator, sizeof(*sub), (void **)&sub) != MCE_OK) {
-        return WM_ERROR_OUT_OF_MEMORY;
-    }
-
-    *sub = (WM_Subscription){
-        .wm = wm,
-        .type = type,
-        .cb = cb,
-        .user_data = user_data,
-        .next = wm->subs,
-    };
-    wm->subs = sub;
-
-    if (type == WM_EVENT_WINDOW_CREATED || type == WM_EVENT_WINDOW_DESTROYED) {
-        wm_window_watch_ensure();
-    }
-
-    if (out != NULL) {
-        *out = sub;
-    }
-
-    return WM_ERROR_OK;
-}
-
-void wm_unsubscribe(WM_Subscription *sub) {
-    if (sub == NULL) {
-        return;
-    }
-
-    WM_Subscription **link = &sub->wm->subs;
-    while (*link != NULL) {
-        if (*link == sub) {
-            *link = sub->next;
-            mc_free(wm_allocator, sub);
-            return;
-        }
-        link = &(*link)->next;
-    }
-}
-
-void wm_dispatch_event(WM *wm, const WM_Event *event) {
-    if (wm == NULL || event == NULL) {
-        return;
-    }
-
-    for (WM_Subscription *sub = wm->subs; sub != NULL;) {
-        WM_Subscription *next = sub->next;
-        if (sub->type == event->type) {
-            sub->cb(event, sub->user_data);
-        }
-        sub = next;
-    }
-}
-
-bool wm_has_subscribers(WM *wm, WM_EventType type) {
-    if (wm == NULL) {
-        return false;
-    }
-
-    for (WM_Subscription *sub = wm->subs; sub != NULL; sub = sub->next) {
-        if (sub->type == type) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 MC_Alloc *wm_allocator = &mc_alloc_malloc;
@@ -133,6 +46,7 @@ void wm_set_default(const WM_TargetInterface *ti) {
 
     mc_wm_resolver_register(mc_win32_wm_vtab);
     wm_input_ensure();
+    wm_window_watch_ensure();
 }
 
 WM *wm_process(void) {
@@ -202,11 +116,25 @@ WM_VDesktopSpan wm_vdesktops(WM *wm) {
 }
 
 static void notify_vdesk_changed(WM *wm, WM_VDesktop *current, WM_VDesktopChangeSource source) {
-    WM_Event event = {
-        .type = WM_EVENT_VDESKTOP_CHANGED,
-        .as.vdesktop_changed = { .desktop = current, .source = source },
-    };
-    wm_dispatch_event(wm, &event);
+    MC_WM *input = wm_input();
+    MC_WMEventType type = wm_uniwm_event_type(WM_UNIWM_VDESKTOP_CHANGED);
+    if (input == NULL || type == MC_WME_NONE) {
+        return;
+    }
+
+    MC_WMRef *ref = mc_wm_get_ref(input);
+    MC_WMEvent event;
+    if (mc_wm_event(ref, type, &event) != MCE_OK) {
+        return;
+    }
+
+    MC_Str name = wm_vdesktop_name(wm, current);
+
+    mc_json_set_object((MC_Json*)event.as.raw);
+    mc_json_object_add_str((MC_Json*)event.as.raw, name, "desktop");
+    mc_json_object_add_str((MC_Json*)event.as.raw, mc_strc(source == WM_VDESKTOP_CHANGE_MANAGED ? "managed" : "external"), "source");
+
+    mc_wm_push_event(ref, &event);
 }
 
 WM_Error wm_vdesktop_switch(WM *wm, WM_VDesktop *vdesk) {
@@ -294,18 +222,6 @@ WM_Error wm_vdesktop_windows(WM *wm, const WM_VDesktop *vdesk, void (*visit)(MC_
     mc_wm_unref(mc_wm);
 
     return status;
-}
-
-WM_Error wm_watch_window_changed(WM *wm, void (*sink)(void *ctx, uint64_t handle, WM_WindowChange change), void *ctx) {
-    if (wm == NULL || sink == NULL) {
-        return WM_ERROR_INVALID_ARGUMENT;
-    }
-
-    if (wm->target_interface->on_window_changed == NULL) {
-        return WM_ERROR_NOT_IMPLEMENTED;
-    }
-
-    return wm->target_interface->on_window_changed(wm->target, sink, ctx);
 }
 
 WM_Error wm_vdesktop_size(WM *wm, const WM_VDesktop *vdesk, MC_Size2U *out) {
