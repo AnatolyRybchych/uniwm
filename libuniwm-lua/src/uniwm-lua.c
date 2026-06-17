@@ -188,97 +188,6 @@ static void push_vdesk_ptr(lua_State *L, WM *wm, WM_VDesktop *vdesk) {
     lua_pushnil(L);
 }
 
-static void lua_event_cb(const WM_Event *event, void *user_data) {
-    LuaCallback *k = user_data;
-    lua_State *L = k->L;
-
-    lua_rawgeti(L, LUA_REGISTRYINDEX, k->ref);
-
-    lua_newtable(L);
-
-    switch (event->type) {
-    case WM_EVENT_VDESKTOP_CHANGED:
-        lua_pushstring(L, "vdesktop_changed");
-        lua_setfield(L, -2, "type");
-        push_vdesk_ptr(L, wm_process(), event->as.vdesktop_changed.desktop);
-        lua_setfield(L, -2, "desktop");
-        lua_pushstring(L, event->as.vdesktop_changed.source == WM_VDESKTOP_CHANGE_MANAGED ? "managed" : "external");
-        lua_setfield(L, -2, "source");
-        break;
-    case WM_EVENT_WINDOW_CREATED:
-        lua_pushstring(L, "window_created");
-        lua_setfield(L, -2, "type");
-        mc_wm_lua_push_window(L, mc_wm_window_ref(event->as.window_created.window));
-        lua_setfield(L, -2, "window");
-        break;
-    case WM_EVENT_WINDOW_DESTROYED:
-        lua_pushstring(L, "window_destroyed");
-        lua_setfield(L, -2, "type");
-        mc_wm_lua_push_window(L, mc_wm_window_ref(event->as.window_destroyed.window));
-        lua_setfield(L, -2, "window");
-        break;
-    }
-
-    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-        fprintf(stderr, "uniwm: event callback error: %s\n", lua_tostring(L, -1));
-        lua_pop(L, 1);
-    }
-}
-
-#define SUBSCRIPTION_MT "libuniwm.Subscription"
-
-typedef struct LuaSubscription {
-    WM_Subscription *sub;
-    LuaCallback *k;
-} LuaSubscription;
-
-static void subscription_release(LuaSubscription *s) {
-    if (s->sub != NULL) {
-        wm_unsubscribe(s->sub);
-        s->sub = NULL;
-    }
-
-    if (s->k != NULL) {
-        lua_callback_free(s->k);
-        s->k = NULL;
-    }
-}
-
-static int subscription_unsubscribe(lua_State *L) {
-    subscription_release(luaL_checkudata(L, 1, SUBSCRIPTION_MT));
-    return 0;
-}
-
-static int subscribe(lua_State *L, WM_EventType type, int fn_index) {
-    luaL_checktype(L, fn_index, LUA_TFUNCTION);
-    WM *wm = current_wm(L);
-
-    LuaCallback *k = NULL;
-    if (mc_alloc(wm_allocator, sizeof(*k), (void **)&k) != MCE_OK) {
-        return luaL_error(L, "uniwm: subscribe: out of memory");
-    }
-    k->L = L;
-    lua_pushvalue(L, fn_index);
-    k->ref = luaL_ref(L, LUA_REGISTRYINDEX);
-
-    LuaSubscription *s = lua_newuserdatauv(L, sizeof(LuaSubscription), 0);
-    s->sub = NULL;
-    s->k = k;
-    luaL_setmetatable(L, SUBSCRIPTION_MT);
-
-    if (wm_subscribe(wm, type, lua_event_cb, k, &s->sub) != WM_ERROR_OK) {
-        s->k = NULL;
-        lua_callback_free(k);
-        return luaL_error(L, "uniwm: subscribe failed");
-    }
-
-    return 1;
-}
-
-static int l_vdesk_on_changed(lua_State *L) {
-    return subscribe(L, WM_EVENT_VDESKTOP_CHANGED, 2);
-}
-
 static int l_vdesk_list(lua_State *L) {
     WM *wm = current_wm(L);
     WM_VDesktopSpan span = wm_vdesktops(wm);
@@ -385,12 +294,17 @@ static int l_register_keybind(lua_State *L) {
     return 0;
 }
 
-static int l_on_window_created(lua_State *L) {
-    return subscribe(L, WM_EVENT_WINDOW_CREATED, 1);
-}
+static int l_window(lua_State *L) {
+    uint64_t identity = (uint64_t)luaL_checkinteger(L, 1);
 
-static int l_on_window_destroyed(lua_State *L) {
-    return subscribe(L, WM_EVENT_WINDOW_DESTROYED, 1);
+    MC_WindowRef *window = NULL;
+    if (wm_resolve_window(identity, &window) != WM_ERROR_OK) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    mc_wm_lua_push_window(L, window);
+    return 1;
 }
 
 static int l_unregister_keybind(lua_State *L) {
@@ -415,20 +329,8 @@ static int luaopen_libuniwm(lua_State *L) {
         { "list", l_vdesk_list },
         { "current", l_vdesk_current },
         { "create", l_vdesk_create },
-        { "on_changed", l_vdesk_on_changed },
         { NULL, NULL },
     };
-
-    static const luaL_Reg subscription_methods[] = {
-        { "unsubscribe", subscription_unsubscribe },
-        { NULL, NULL },
-    };
-
-    luaL_newmetatable(L, SUBSCRIPTION_MT);
-    lua_pushvalue(L, -1);
-    lua_setfield(L, -2, "__index");
-    luaL_setfuncs(L, subscription_methods, 0);
-    lua_pop(L, 1);
 
     lua_createtable(L, 0, 3);
 
@@ -443,10 +345,8 @@ static int luaopen_libuniwm(lua_State *L) {
     lua_setfield(L, -2, "register_keybind");
     lua_pushcfunction(L, l_unregister_keybind);
     lua_setfield(L, -2, "unregister_keybind");
-    lua_pushcfunction(L, l_on_window_created);
-    lua_setfield(L, -2, "on_window_created");
-    lua_pushcfunction(L, l_on_window_destroyed);
-    lua_setfield(L, -2, "on_window_destroyed");
+    lua_pushcfunction(L, l_window);
+    lua_setfield(L, -2, "window");
 
     return 1;
 }
