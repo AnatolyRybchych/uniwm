@@ -6,6 +6,10 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+#include <mc/time.h>
+#include <mc/wm/wm.h>
+#include <mc/wm/event.h>
+
 #include <uniwm/wm.h>
 #include <uniwm-windows/target.h>
 #include <uniwm-lua/uniwm-lua.h>
@@ -51,8 +55,20 @@ static int run_worker(int argc, char **argv) {
     uniwm_lua_open(L);
 
     int rc = run_script(L, script);
-    if (rc == 0) {
-        wm_run();
+    if (rc == 0 && wm_should_run()) {
+        MC_WM *input = wm_input();
+        MC_WMRef *ref = mc_wm_get_ref(input);
+
+        for (;;) {
+            MC_WMEvent event;
+            while (mc_wm_poll_event(input, &event) == MCE_OK) {
+                mc_wm_dispatch_event_callbacks(ref, &event);
+                wm_process_event(&event);
+            }
+
+            wm_tick();
+            mc_sleep(&(MC_Time){ .nsec = 16000000 });
+        }
     }
 
     lua_close(L);
