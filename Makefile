@@ -10,9 +10,9 @@ BUILDDIR := build
 BINDIR   := bin
 
 MC_REPO   := https://github.com/AnatolyRybchych/c.git
-MC_COMMIT := 4922127d8f053d320f1e6816310cc27d21566444
+MC_BRANCH := main
 MCDIR     := external/c
-MC_STAMP  := $(MCDIR)/.commit.$(MC_COMMIT)
+MC_STAMP  := $(MCDIR)/.branch.$(MC_BRANCH)
 
 MC_PKGS   := core geometry graphics net os wm win32_wm
 MC_INC    := $(addprefix -I$(abspath $(MCDIR))/package/,$(addsuffix /include,$(MC_PKGS)))
@@ -108,8 +108,8 @@ $(LUALIB): | $(MC_STAMP)
 $(MC_STAMP):
 	$(GIT) init -q $(MCDIR)
 	$(GIT) -C $(MCDIR) config core.autocrlf false
-	$(GIT) -C $(MCDIR) fetch -q --depth 1 $(MC_REPO) $(MC_COMMIT)
-	$(GIT) -C $(MCDIR) checkout -q --detach FETCH_HEAD
+	$(GIT) -C $(MCDIR) fetch -q $(MC_REPO) "+refs/heads/*:refs/remotes/origin/*"
+	$(GIT) -C $(MCDIR) checkout -q -B $(MC_BRANCH) refs/remotes/origin/$(MC_BRANCH)
 	$(TOUCH) $@
 
 $(BUILDDIR) $(BINDIR):
