@@ -37,6 +37,7 @@ static bool keybind_down[MC_KEY_MAX];
 static bool window_watch = false;
 static bool window_poll = false;
 static IdentityList *known_windows = NULL;
+static uint64_t focused_window = 0;
 
 static MC_WMEventType uniwm_event_offset = MC_WME_NONE;
 static unsigned window_poll_tick = 0;
@@ -102,6 +103,7 @@ WM_Error wm_input_ensure(void) {
         [WM_UNIWM_VDESKTOP_CHANGED] = { .name = "VDESKTOP_CHANGED" },
         [WM_UNIWM_WINDOW_CREATED] = { .name = "WINDOW_CREATED" },
         [WM_UNIWM_WINDOW_DESTROYED] = { .name = "WINDOW_DESTROYED" },
+        [WM_UNIWM_WINDOW_FOCUSED] = { .name = "WINDOW_FOCUSED" },
     };
     MC_WMEventGroupDef uniwm_group = {
         .name = "UNIWM",
@@ -256,8 +258,21 @@ static bool known_forget(uint64_t identity) {
     return false;
 }
 
+static WM_UniwmEvent uniwm_event_of(WM_WindowChange change) {
+    switch (change) {
+    case WM_WINDOW_CREATED:
+        return WM_UNIWM_WINDOW_CREATED;
+    case WM_WINDOW_DESTROYED:
+        return WM_UNIWM_WINDOW_DESTROYED;
+    case WM_WINDOW_FOCUSED:
+        return WM_UNIWM_WINDOW_FOCUSED;
+    default:
+        return WM_UNIWM_EVENT_COUNT;
+    }
+}
+
 static void emit_window_event(uint64_t identity, WM_WindowChange change) {
-    MC_WMEventType type = wm_uniwm_event_type(change == WM_WINDOW_CREATED ? WM_UNIWM_WINDOW_CREATED : WM_UNIWM_WINDOW_DESTROYED);
+    MC_WMEventType type = wm_uniwm_event_type(uniwm_event_of(change));
     if (input == NULL || type == MC_WME_NONE) {
         return;
     }
@@ -346,6 +361,16 @@ static void target_window_sink(void *ctx, uint64_t handle, WM_WindowChange chang
     (void)ctx;
 
     if (input == NULL) {
+        return;
+    }
+
+    if (change == WM_WINDOW_FOCUSED) {
+        if (handle == focused_window) {
+            return;
+        }
+        focused_window = handle;
+
+        emit_window_event(handle, change);
         return;
     }
 

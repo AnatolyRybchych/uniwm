@@ -33,6 +33,7 @@ typedef enum WM_VDesktopChangeSource {
 typedef enum WM_WindowChange {
     WM_WINDOW_CREATED,
     WM_WINDOW_DESTROYED,
+    WM_WINDOW_FOCUSED,
 } WM_WindowChange;
 
 typedef enum WM_TargetCapability {
@@ -45,6 +46,7 @@ typedef enum WM_UniwmEvent {
     WM_UNIWM_VDESKTOP_CHANGED,
     WM_UNIWM_WINDOW_CREATED,
     WM_UNIWM_WINDOW_DESTROYED,
+    WM_UNIWM_WINDOW_FOCUSED,
     WM_UNIWM_EVENT_COUNT,
 } WM_UniwmEvent;
 
