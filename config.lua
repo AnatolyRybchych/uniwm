@@ -135,6 +135,13 @@ wm:on_event("UNIWM.WINDOW_DESTROYED", function (event)
     print(string.format("destroyed: 0x%x", event.data.window))
 end)
 
+wm:on_event("UNIWM.WINDOW_FOCUSED", function (event)
+    local window = uniwm.window(event.data.window)
+    if window then
+        print("focused: " .. window:get_title())
+    end
+end)
+
 wm:register_events("DEMO", {
     { name = "PING" },
 })
