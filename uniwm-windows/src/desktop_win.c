@@ -659,6 +659,7 @@ static WM_Error win_on_window_changed(WM_Target *t, WM_WindowChangeSink sink, vo
 }
 
 static const WM_TargetInterface windows_interface = {
+    .capabilities = WM_TARGET_CAP_WINDOW_EVENTS,
     .init = win_init,
     .destroy = win_destroy,
     .get_vdesk = win_get_vdesk,
