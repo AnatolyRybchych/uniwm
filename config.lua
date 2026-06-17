@@ -74,10 +74,11 @@ local function layout_vdesk (desktop, managed)
     end
 end
 
-subscriptions = {
-    uniwm.vdesktop:on_changed(function (event) layout_vdesk(event.desktop, event.source) end)
-}
-layout_vdesk(uniwm.vdesktop:current(), true)
+wm:on_event("UNIWM.VDESKTOP_CHANGED", function (event)
+    layout_vdesk(uniwm.vdesktop:current(), event.data.source)
+end)
+
+layout_vdesk(uniwm.vdesktop:current(), "managed")
 for i = #uniwm.vdesktop:list() + 1, 10 do
     local desk_name = "Desktop " .. i
     uniwm.vdesktop:create(desk_name)
@@ -123,32 +124,38 @@ for i = 1, 10 do
     end
 end
 
-table.insert(subscriptions, uniwm.on_window_created(function (event)
-    dump(event)
-    -- print(event.window:get_title())
-end))
+wm:on_event("UNIWM.WINDOW_CREATED", function (event)
+    local window = uniwm.window(event.data.window)
+    if window then
+        print("created: " .. window:get_title())
+    end
+end)
 
-table.insert(subscriptions, uniwm.on_window_destroyed(function (event)
-    dump(event)
-    print(event.window:get_title())
-end))
+wm:on_event("UNIWM.WINDOW_DESTROYED", function (event)
+    print(string.format("destroyed: 0x%x", event.data.window))
+end)
 
-wm:register_events("USER.DEMO", {
+wm:register_events("DEMO", {
     { name = "PING" },
 })
 
-table.insert(subscriptions, wm:on_event("USER.DEMO.PING", function (event)
+wm:on_event("DEMO.PING", function (event)
     dump(event)
-end))
+end)
 
 local pings = 0
 uniwm.supress_key("SUPER_L + SHIFT_L + P")
 uniwm.register_keybind("SUPER_L + SHIFT_L + P", function()
     pings = pings + 1
     local window = wm:get_hovered_window()
-    wm:send_event("USER.DEMO.PING", {
+    wm:send_event("DEMO.PING", {
         from = window and window:get_title() or "nowhere",
         when = pings,
     })
+end)
+
+
+wm:on_event(nil, function (event)
+    dump(event)
 end)
 
