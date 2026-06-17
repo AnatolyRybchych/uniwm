@@ -367,10 +367,16 @@ static WM_Error win_init(MC_Alloc *alloc, WM_Target **out) {
 static WM_WindowChangeSink window_sink = NULL;
 static void *window_sink_ctx = NULL;
 static HWINEVENTHOOK window_event_hook = NULL;
+static HWINEVENTHOOK foreground_event_hook = NULL;
 
 static void win_destroy(WM_Target *t) {
     if (!t) {
         return;
+    }
+
+    if (foreground_event_hook) {
+        UnhookWinEvent(foreground_event_hook);
+        foreground_event_hook = NULL;
     }
 
     if (window_event_hook) {
@@ -632,7 +638,12 @@ static void CALLBACK win_event_proc(HWINEVENTHOOK hook, DWORD event, HWND hwnd, 
         return;
     }
 
-    if (event == EVENT_OBJECT_SHOW) {
+    if (event == EVENT_SYSTEM_FOREGROUND) {
+        if (!is_root_window(hwnd)) {
+            return;
+        }
+        window_sink(window_sink_ctx, (uint64_t)(uintptr_t)hwnd, WM_WINDOW_FOCUSED);
+    } else if (event == EVENT_OBJECT_SHOW) {
         if (!is_root_window(hwnd)) {
             return;
         }
@@ -651,6 +662,13 @@ static WM_Error win_on_window_changed(WM_Target *t, WM_WindowChangeSink sink, vo
     if (window_event_hook == NULL) {
         window_event_hook = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_SHOW, NULL, win_event_proc, 0, 0, WINEVENT_OUTOFCONTEXT);
         if (window_event_hook == NULL) {
+            return WM_ERROR_UNKNOWN;
+        }
+    }
+
+    if (foreground_event_hook == NULL) {
+        foreground_event_hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, NULL, win_event_proc, 0, 0, WINEVENT_OUTOFCONTEXT);
+        if (foreground_event_hook == NULL) {
             return WM_ERROR_UNKNOWN;
         }
     }
