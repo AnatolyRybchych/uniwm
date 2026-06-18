@@ -638,7 +638,12 @@ static void CALLBACK win_event_proc(HWINEVENTHOOK hook, DWORD event, HWND hwnd, 
         return;
     }
 
-    if (event == EVENT_SYSTEM_FOREGROUND) {
+    if (event == EVENT_OBJECT_CREATE) {
+        if (!is_root_window(hwnd)) {
+            return;
+        }
+        window_sink(window_sink_ctx, (uint64_t)(uintptr_t)hwnd, WM_WINDOW_OPENED);
+    } else if (event == EVENT_SYSTEM_FOREGROUND) {
         if (!is_root_window(hwnd)) {
             return;
         }
@@ -660,7 +665,7 @@ static WM_Error win_on_window_changed(WM_Target *t, WM_WindowChangeSink sink, vo
     window_sink_ctx = ctx;
 
     if (window_event_hook == NULL) {
-        window_event_hook = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_SHOW, NULL, win_event_proc, 0, 0, WINEVENT_OUTOFCONTEXT);
+        window_event_hook = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, NULL, win_event_proc, 0, 0, WINEVENT_OUTOFCONTEXT);
         if (window_event_hook == NULL) {
             return WM_ERROR_UNKNOWN;
         }
