@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <mc/time.h>
 #include <mc/wm/wm.h>
@@ -62,17 +63,7 @@ static MC_WMEventType uniwm_event_offset = MC_WME_NONE;
 static unsigned window_poll_tick = 0;
 
 static bool combo_eq(const WM_KeyCombo *a, const WM_KeyCombo *b) {
-    if (a->count != b->count) {
-        return false;
-    }
-
-    for (size_t i = 0; i < a->count; i++) {
-        if (a->keys[i] != b->keys[i]) {
-            return false;
-        }
-    }
-
-    return true;
+    return a->count == b->count && memcmp(a->keys, b->keys, sizeof(MC_Key[a->count])) == 0;
 }
 
 static bool combo_triggered(MC_Key key, const WM_KeyCombo *c, const bool *down) {
