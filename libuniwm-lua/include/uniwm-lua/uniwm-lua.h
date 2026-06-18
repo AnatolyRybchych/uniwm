@@ -7,4 +7,6 @@
 
 WM_Error uniwm_lua_open(lua_State *L);
 
+int luaopen_libuniwm(lua_State *L);
+
 #endif

@@ -11,6 +11,7 @@
 #include <mc/wm-lua/wm-lua.h>
 
 #include <uniwm/wm.h>
+#include <uniwm-windows/target.h>
 
 typedef struct LuaCallback {
     lua_State *L;
@@ -324,7 +325,7 @@ static int l_unregister_keybind(lua_State *L) {
     return 0;
 }
 
-static int luaopen_libuniwm(lua_State *L) {
+static int open_libuniwm(lua_State *L) {
     static const luaL_Reg vdesk_fns[] = {
         { "list", l_vdesk_list },
         { "current", l_vdesk_current },
@@ -356,10 +357,16 @@ WM_Error uniwm_lua_open(lua_State *L) {
         return WM_ERROR_INVALID_ARGUMENT;
     }
 
-    luaL_requiref(L, "libuniwm", luaopen_libuniwm, 0);
+    luaL_requiref(L, "uniwm", open_libuniwm, 0);
     lua_pop(L, 1);
 
     mc_wm_lua_open(L, NULL);
 
     return WM_ERROR_OK;
+}
+
+int luaopen_libuniwm(lua_State *L) {
+    wm_set_default(uniwm_windows_target);
+    mc_wm_lua_open(L, NULL);
+    return open_libuniwm(L);
 }
