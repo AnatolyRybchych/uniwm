@@ -343,7 +343,12 @@ static void emit_window_event(uint64_t identity, WM_WindowChange change) {
     }
 
     mc_json_set_object((MC_Json*)event.as.raw);
-    mc_json_object_add_u64((MC_Json*)event.as.raw, identity, "window");
+    mc_json_object_add_u64((MC_Json*)event.as.raw, identity, "window_id");
+
+    MC_Json *window = NULL;
+    if (mc_json_object_add_new((MC_Json*)event.as.raw, &window, "window") == MCE_OK) {
+        mc_json_set_null(window);
+    }
 
     mc_wm_push_event(ref, &event);
 }
@@ -550,7 +555,7 @@ static void release_destroyed_window(const MC_WMEvent *event) {
         return;
     }
 
-    uint64_t identity = mc_json_object_as_u64((MC_Json*)event->as.raw, "window");
+    uint64_t identity = mc_json_object_as_u64((MC_Json*)event->as.raw, "window_id");
     unregister_window(identity);
 }
 
