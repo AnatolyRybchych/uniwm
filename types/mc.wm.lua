@@ -18,39 +18,39 @@
 ---@alias mcwm.WindowState "normal"|"minimized"|"maximized"|"fullscreen"
 
 --- Event type names — serialized `GROUP.TYPE` form (as `mc_wm_event_type_str` emits /
---- `mc_wm_event_type_from_str` accepts). `"NONE"` matches every event (but prefer `nil`
---- in `WM:on_event`). Registered user events use `"USER.<group>.<event>"`; `string` is
---- included so those (and any custom name) are accepted while the built-ins still offer
---- completion.
+--- `mc_wm_event_type_from_str` accepts). `"WM.NONE"` matches every event (but prefer `nil`
+--- in `WM:on_event`). Registered user events use `"<group>.<event>"` (e.g. `"DEMO.PING"`,
+--- `"UNIWM.WINDOW_FOCUSED"`); `string` is included so those (and any custom name) are accepted
+--- while the built-ins still offer completion.
 ---@alias mcwm.EventType
 ---| string
----| "NONE"
----| "GENERIC.RAW"
----| "WINDOW.READY"
----| "WINDOW.RESIZED"
----| "WINDOW.MOVED"
----| "WINDOW.REDRAW_REQUESTED"
----| "WINDOW.CLOSE_REQUESTED"
----| "WINDOW.STATE_CHANGED"
----| "WINDOW.FOCUS_GAINED"
----| "WINDOW.FOCUS_LOST"
----| "WINDOW.MOUSE_MOVED"
----| "WINDOW.MOUSE_DOWN"
----| "WINDOW.MOUSE_UP"
----| "WINDOW.MOUSE_CLICK"
----| "WINDOW.MOUSE_ENTER"
----| "WINDOW.MOUSE_LEAVE"
----| "WINDOW.MOUSE_WHEEL"
----| "WINDOW.KEY_DOWN"
----| "WINDOW.KEY_UP"
----| "WINDOW.TEXT_INPUT"
----| "WINDOW.PASTE_TEXT"
----| "GLOBAL.KEY_DOWN"
----| "GLOBAL.KEY_UP"
----| "GLOBAL.MOUSE_MOVED"
----| "GLOBAL.MOUSE_DOWN"
----| "GLOBAL.MOUSE_UP"
----| "GLOBAL.MOUSE_WHEEL"
+---| "WM.NONE"
+---| "WM.GENERIC.RAW"
+---| "WM.WINDOW.READY"
+---| "WM.WINDOW.RESIZED"
+---| "WM.WINDOW.MOVED"
+---| "WM.WINDOW.REDRAW_REQUESTED"
+---| "WM.WINDOW.CLOSE_REQUESTED"
+---| "WM.WINDOW.STATE_CHANGED"
+---| "WM.WINDOW.FOCUS_GAINED"
+---| "WM.WINDOW.FOCUS_LOST"
+---| "WM.WINDOW.MOUSE_MOVED"
+---| "WM.WINDOW.MOUSE_DOWN"
+---| "WM.WINDOW.MOUSE_UP"
+---| "WM.WINDOW.MOUSE_CLICK"
+---| "WM.WINDOW.MOUSE_ENTER"
+---| "WM.WINDOW.MOUSE_LEAVE"
+---| "WM.WINDOW.MOUSE_WHEEL"
+---| "WM.WINDOW.KEY_DOWN"
+---| "WM.WINDOW.KEY_UP"
+---| "WM.WINDOW.TEXT_INPUT"
+---| "WM.WINDOW.PASTE_TEXT"
+---| "WM.GLOBAL.KEY_DOWN"
+---| "WM.GLOBAL.KEY_UP"
+---| "WM.GLOBAL.MOUSE_MOVED"
+---| "WM.GLOBAL.MOUSE_DOWN"
+---| "WM.GLOBAL.MOUSE_UP"
+---| "WM.GLOBAL.MOUSE_WHEEL"
 
 ---@class mcwm.WindowOpts
 ---@field title? string
@@ -66,39 +66,39 @@
 --- `WINDOW_READY` / `WINDOW_REDRAW_REQUESTED` / `WINDOW_CLOSE_REQUESTED` /
 --- `FOCUS_GAINED` / `FOCUS_LOST` — only the window.
 ---@class mcwm.Event.Window
----@field type "WINDOW.READY"|"WINDOW.REDRAW_REQUESTED"|"WINDOW.CLOSE_REQUESTED"|"WINDOW.FOCUS_GAINED"|"WINDOW.FOCUS_LOST"
+---@field type "WM.WINDOW.READY"|"WM.WINDOW.REDRAW_REQUESTED"|"WM.WINDOW.CLOSE_REQUESTED"|"WM.WINDOW.FOCUS_GAINED"|"WM.WINDOW.FOCUS_LOST"
 ---@field window mcwm.Window
 
 ---@class mcwm.Event.WindowResized
----@field type "WINDOW.RESIZED"
+---@field type "WM.WINDOW.RESIZED"
 ---@field window mcwm.Window
 ---@field new_size mcwm.Size
 
 ---@class mcwm.Event.WindowMoved
----@field type "WINDOW.MOVED"
+---@field type "WM.WINDOW.MOVED"
 ---@field window mcwm.Window
 ---@field new_position mcwm.Position
 
 ---@class mcwm.Event.WindowStateChanged
----@field type "WINDOW.STATE_CHANGED"
+---@field type "WM.WINDOW.STATE_CHANGED"
 ---@field window mcwm.Window
 ---@field state mcwm.WindowState
 
 --- `MOUSE_MOVED` / `MOUSE_ENTER` / `MOUSE_LEAVE`.
 ---@class mcwm.Event.MouseMove
----@field type "WINDOW.MOUSE_MOVED"|"WINDOW.MOUSE_ENTER"|"WINDOW.MOUSE_LEAVE"
+---@field type "WM.WINDOW.MOUSE_MOVED"|"WM.WINDOW.MOUSE_ENTER"|"WM.WINDOW.MOUSE_LEAVE"
 ---@field window mcwm.Window
 ---@field position mcwm.Position
 
 --- `MOUSE_DOWN` / `MOUSE_UP`.
 ---@class mcwm.Event.MouseButton
----@field type "WINDOW.MOUSE_DOWN"|"WINDOW.MOUSE_UP"
+---@field type "WM.WINDOW.MOUSE_DOWN"|"WM.WINDOW.MOUSE_UP"
 ---@field window mcwm.Window
 ---@field position mcwm.Position
 ---@field button string
 
 ---@class mcwm.Event.MouseWheel
----@field type "WINDOW.MOUSE_WHEEL"
+---@field type "WM.WINDOW.MOUSE_WHEEL"
 ---@field window mcwm.Window
 ---@field position mcwm.Position
 ---@field up integer
@@ -106,40 +106,50 @@
 
 --- `KEY_DOWN` / `KEY_UP`.
 ---@class mcwm.Event.Key
----@field type "WINDOW.KEY_DOWN"|"WINDOW.KEY_UP"
+---@field type "WM.WINDOW.KEY_DOWN"|"WM.WINDOW.KEY_UP"
 ---@field window mcwm.Window
 ---@field key string
 
 --- `TEXT_INPUT` / `PASTE_TEXT`.
 ---@class mcwm.Event.Text
----@field type "WINDOW.TEXT_INPUT"|"WINDOW.PASTE_TEXT"
+---@field type "WM.WINDOW.TEXT_INPUT"|"WM.WINDOW.PASTE_TEXT"
 ---@field window mcwm.Window
 ---@field text string
 
 --- `GLOBAL_KEY_DOWN` / `GLOBAL_KEY_UP`.
 ---@class mcwm.Event.GlobalKey
----@field type "GLOBAL.KEY_DOWN"|"GLOBAL.KEY_UP"
+---@field type "WM.GLOBAL.KEY_DOWN"|"WM.GLOBAL.KEY_UP"
 ---@field key string
 
 ---@class mcwm.Event.GlobalMouseMove
----@field type "GLOBAL.MOUSE_MOVED"
+---@field type "WM.GLOBAL.MOUSE_MOVED"
 ---@field position mcwm.Position
 
 --- `GLOBAL_MOUSE_DOWN` / `GLOBAL_MOUSE_UP`.
 ---@class mcwm.Event.GlobalMouseButton
----@field type "GLOBAL.MOUSE_DOWN"|"GLOBAL.MOUSE_UP"
+---@field type "WM.GLOBAL.MOUSE_DOWN"|"WM.GLOBAL.MOUSE_UP"
 ---@field position mcwm.Position
 ---@field button string
 
 ---@class mcwm.Event.GlobalMouseWheel
----@field type "GLOBAL.MOUSE_WHEEL"
+---@field type "WM.GLOBAL.MOUSE_WHEEL"
 ---@field position mcwm.Position
 ---@field up integer
 ---@field right integer
 
 --- `NONE` / `RAW` / `MOUSE_CLICK` — no payload fields.
 ---@class mcwm.Event.Other
----@field type "NONE"|"GENERIC.RAW"|"WINDOW.MOUSE_CLICK"
+---@field type "WM.NONE"|"WM.GENERIC.RAW"|"WM.WINDOW.MOUSE_CLICK"
+
+--- User-defined / libuniwm events (registered via `WM:register_events`, or libuniwm's
+--- `UNIWM.*`) — `type` is the custom `GROUP.NAME` and the payload carries whatever fields
+--- were sent (e.g. `window_id`, `window` for the `UNIWM.WINDOW_*` events). Arbitrary fields
+--- are allowed with no diagnostic; the built-in variants above still drive `type` completion.
+---@class mcwm.Event.User
+---@field type string
+---@field window? mcwm.Window
+---@field window_id? integer
+---@field [string] any
 
 ---@alias mcwm.Event
 ---| mcwm.Event.Window
@@ -156,6 +166,7 @@
 ---| mcwm.Event.GlobalMouseButton
 ---| mcwm.Event.GlobalMouseWheel
 ---| mcwm.Event.Other
+---| mcwm.Event.User
 
 ---@class mcwm.Window
 local Window = {}
@@ -245,7 +256,7 @@ local Subscription = {}
 function Subscription:unsubscribe() end
 
 --- Register a callback for events. `event_type` is a serialized `GROUP.TYPE` event name
---- (e.g. `"GLOBAL.KEY_DOWN"`) or `nil` to match every event. The callback receives the
+--- (e.g. `"WM.GLOBAL.KEY_DOWN"`) or `nil` to match every event. The callback receives the
 --- event as a table (see `mcwm.Event`); its `window` field is resolved lazily on
 --- first access. The subscription stays active until `:unsubscribe()` (or process exit) —
 --- you need not hold the returned handle to keep receiving events; keep it only if you want
@@ -259,19 +270,18 @@ function WM:on_event(event_type, callback) end
 ---@class mcwm.UserEventDef
 ---@field name string
 
---- Register a user event subgroup. `group` must start with `"USER."` (the prefix is
---- reserved for future extension); `events` is an ordered list of `{name=...}` defs whose
---- full event names become `<group>.<name>` (e.g. `"USER.TEST.ALERT"`). Errors if `group`
---- does not start with `"USER."` or if the subgroup is already registered.
----@param group string # e.g. "USER.TEST"
+--- Register a user event subgroup. `group` is the group name used directly (no prefix —
+--- e.g. `"DEMO"`); `events` is an ordered list of `{name=...}` defs whose full event names
+--- become `<group>.<name>` (e.g. `"DEMO.ALERT"`). Errors if the subgroup is already registered.
+---@param group string # e.g. "DEMO"
 ---@param events mcwm.UserEventDef[]
 function WM:register_events(group, events) end
 
 --- Enqueue a user event for delivery (FIFO, ahead of target events). `name` is a full
---- registered user-event name (e.g. `"USER.TEST.MESSAGE"`) and must start with `"USER."`;
---- `data` is an optional table serialized into the event payload (JSON). Errors if `name`
---- does not start with `"USER."` or is not a registered event.
----@param name string # e.g. "USER.TEST.MESSAGE"
+--- registered user-event name (`<group>.<name>`, e.g. `"DEMO.MESSAGE"`); `data` is an
+--- optional table serialized into the event payload (JSON). Errors if `name` is not a
+--- registered event.
+---@param name string # e.g. "DEMO.MESSAGE"
 ---@param data? table
 function WM:send_event(name, data) end
 

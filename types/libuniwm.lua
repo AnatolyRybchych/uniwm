@@ -1,7 +1,14 @@
 ---@meta libuniwm
 
---- A virtual desktop. Obtained from `vdesktop:list()`/`:current()`/`:create()`
---- or the `on_changed` callback. The same desktop always yields the same table.
+--- Window-manager events (desktop changed, window created/destroyed/focused) are NOT
+--- delivered through this module — subscribe via `mc.wm`:
+---   `require("mc.wm").resolve():on_event("UNIWM.VDESKTOP_CHANGED", fn)`
+---   (also `"UNIWM.WINDOW_CREATED"` / `"UNIWM.WINDOW_DESTROYED"` / `"UNIWM.WINDOW_FOCUSED"`).
+--- Their payloads carry `window_id` (+ a lazily-resolved `window`) or `desktop`/`source`;
+--- see `mcwm.EventType` / `mcwm.Event`.
+
+--- A virtual desktop. Obtained from `vdesktop:list()`/`:current()`/`:create()`.
+--- The same desktop always yields the same table.
 ---@class libuniwm.Desktop
 ---@field name string
 local Desktop = {}
@@ -22,52 +29,22 @@ function Desktop:size() end
 ---@param window mcwm.Window
 function Desktop:move_window(window) end
 
---- How a desktop change was triggered: "managed" (an explicit uniwm switch) or
---- "external" (another API, e.g. WIN+TAB — not yet detected).
----@alias libuniwm.ChangeSource "managed"|"external"
-
---- Event passed to subscription callbacks. A tagged table discriminated by `type`;
---- more event types/fields may be added in the future.
----@class libuniwm.Event.VDesktopChanged
----@field type "vdesktop_changed"
----@field desktop libuniwm.Desktop
----@field source libuniwm.ChangeSource
-
----@class libuniwm.Event.WindowCreated
----@field type "window_created"
----@field window mcwm.Window
-
----@class libuniwm.Event.WindowDestroyed
----@field type "window_destroyed"
----@field window mcwm.Window
-
----@alias libuniwm.Event libuniwm.Event.VDesktopChanged | libuniwm.Event.WindowCreated | libuniwm.Event.WindowDestroyed
-
+--- The process-wide `vdesktop` singleton. Call its methods with `:`.
 ---@class libuniwm.VirtualDesktop
 local VirtualDesktop = {}
 
+--- All virtual desktops, in order. Use `#list` for the count.
 ---@return libuniwm.Desktop[]
 function VirtualDesktop:list() end
 
+--- The current desktop, or nil if it cannot be determined.
 ---@return libuniwm.Desktop? # nil if it cannot be determined
 function VirtualDesktop:current() end
 
+--- Create a new virtual desktop named `name` and return it.
 ---@param name string
 ---@return libuniwm.Desktop?
 function VirtualDesktop:create(name) end
-
---- An event subscription. Stays active until `:unsubscribe()` is called (or the
---- process exits); it is NOT released by garbage collection.
----@class libuniwm.Subscription
-local Subscription = {}
-
---- Stop receiving the event. Idempotent.
-function Subscription:unsubscribe() end
-
---- Subscribe to desktop-change notifications. Multiple subscribers allowed.
----@param fn fun(event: libuniwm.Event.VDesktopChanged)
----@return libuniwm.Subscription
-function VirtualDesktop:on_changed(fn) end
 
 ---@class libuniwm
 ---@field vdesktop libuniwm.VirtualDesktop
@@ -82,7 +59,7 @@ function libuniwm.supress_key(spec) end
 function libuniwm.unsupress_key(spec) end
 
 --- Run `fn` on a fresh press of `spec` (does not swallow). Only the most
---- specific matching combo fires.
+--- specific matching combo fires. Re-registering a combo replaces its callback.
 ---@param spec string
 ---@param fn fun()
 function libuniwm.register_keybind(spec, fn) end
@@ -90,20 +67,11 @@ function libuniwm.register_keybind(spec, fn) end
 ---@param spec string
 function libuniwm.unregister_keybind(spec) end
 
---- Subscribe to window creation. `fn` is called with a `window_created` event whose
---- `window` is a new **root application window** (an `mc.wm` window) as it is first
---- shown — child/control windows and tool/infra windows (tooltips, IME, OLE helpers)
---- are excluded. Registering this turns the process into a daemon (the event loop
---- runs even without keybinds).
----@param fn fun(event: libuniwm.Event.WindowCreated)
----@return libuniwm.Subscription
-function libuniwm.on_window_created(fn) end
-
---- Subscribe to window destruction. `fn` is called with a `window_destroyed` event;
---- `event.window`'s native handle is already gone, so query its identity (e.g. to
---- match a previously tracked window) rather than its live state.
----@param fn fun(event: libuniwm.Event.WindowDestroyed)
----@return libuniwm.Subscription
-function libuniwm.on_window_destroyed(fn) end
+--- Resolve a native window identity (the win32 HWND value, as carried by the
+--- `UNIWM.WINDOW_*` events' `window_id`) into an `mc.wm` window, or nil if it
+--- cannot be resolved (e.g. the window is gone).
+---@param id integer
+---@return mcwm.Window?
+function libuniwm.window(id) end
 
 return libuniwm
