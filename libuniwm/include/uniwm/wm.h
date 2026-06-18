@@ -31,6 +31,7 @@ typedef enum WM_VDesktopChangeSource {
 } WM_VDesktopChangeSource;
 
 typedef enum WM_WindowChange {
+    WM_WINDOW_OPENED,
     WM_WINDOW_CREATED,
     WM_WINDOW_DESTROYED,
     WM_WINDOW_FOCUSED,

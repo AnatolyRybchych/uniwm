@@ -25,7 +25,14 @@ typedef struct Keybind {
 } Keybind;
 
 MC_DEFINE_VECTOR(IdentityList, uint64_t);
-MC_DEFINE_VECTOR(WindowRefList, MC_WindowRef*);
+
+typedef struct RegisteredWindow {
+    uint64_t identity;
+    MC_WindowRef *window;
+    bool known;
+} RegisteredWindow;
+
+MC_DEFINE_VECTOR(WindowList, RegisteredWindow);
 
 static MC_WM *input = NULL;
 static bool input_loop = false;
@@ -37,9 +44,8 @@ static bool suppress_down[MC_KEY_MAX];
 static bool keybind_down[MC_KEY_MAX];
 static bool window_watch = false;
 static bool window_poll = false;
-static IdentityList *known_windows = NULL;
+static WindowList *windows = NULL;
 static uint64_t focused_window = 0;
-static WindowRefList *live_windows = NULL;
 
 static MC_WMEventType uniwm_event_offset = MC_WME_NONE;
 static unsigned window_poll_tick = 0;
@@ -268,23 +274,47 @@ static bool identity_in(const IdentityList *list, uint64_t identity) {
     return false;
 }
 
-static void known_add(uint64_t identity) {
-    IdentityList *grown = MC_VECTOR_PUSHN(known_windows, 1, (&identity));
-    if (grown != NULL) {
-        known_windows = grown;
-    }
-}
-
-static bool known_forget(uint64_t identity) {
-    size_t count = MC_VECTOR_SIZE(known_windows);
+static RegisteredWindow *find_window(uint64_t identity) {
+    size_t count = MC_VECTOR_SIZE(windows);
     for (size_t i = 0; i < count; i++) {
-        if (MC_VECTOR_DATA(known_windows)[i] == identity) {
-            MC_VECTOR_ERASE(known_windows, i, 1);
-            return true;
+        if (MC_VECTOR_DATA(windows)[i].identity == identity) {
+            return &MC_VECTOR_DATA(windows)[i];
         }
     }
 
-    return false;
+    return NULL;
+}
+
+static void register_window_ref(uint64_t identity, MC_WindowRef *window, bool known) {
+    RegisteredWindow entry = { .identity = identity, .window = window, .known = known };
+    WindowList *grown = MC_VECTOR_PUSHN(windows, 1, (&entry));
+    if (grown != NULL) {
+        windows = grown;
+    } else {
+        mc_wm_window_unref(window);
+    }
+}
+
+static void register_window(uint64_t identity, bool known) {
+    if (find_window(identity) != NULL) {
+        return;
+    }
+
+    MC_WindowRef *window = NULL;
+    if (wm_resolve_window(identity, &window) == WM_ERROR_OK) {
+        register_window_ref(identity, window, known);
+    }
+}
+
+static void unregister_window(uint64_t identity) {
+    size_t count = MC_VECTOR_SIZE(windows);
+    for (size_t i = 0; i < count; i++) {
+        if (MC_VECTOR_DATA(windows)[i].identity == identity) {
+            mc_wm_window_unref(MC_VECTOR_DATA(windows)[i].window);
+            MC_VECTOR_ERASE(windows, i, 1);
+            return;
+        }
+    }
 }
 
 static WM_UniwmEvent uniwm_event_of(WM_WindowChange change) {
@@ -316,16 +346,6 @@ static void emit_window_event(uint64_t identity, WM_WindowChange change) {
     mc_json_object_add_u64((MC_Json*)event.as.raw, identity, "window");
 
     mc_wm_push_event(ref, &event);
-
-    MC_WindowRef *window = NULL;
-    if (wm_resolve_window(identity, &window) == WM_ERROR_OK) {
-        WindowRefList *grown = MC_VECTOR_PUSHN(live_windows, 1, (&window));
-        if (grown != NULL) {
-            live_windows = grown;
-        } else {
-            mc_wm_window_unref(window);
-        }
-    }
 }
 
 WM_Error wm_resolve_window(uint64_t identity, MC_WindowRef **out) {
@@ -360,18 +380,26 @@ static MC_Error window_visit(MC_WindowRef *window, void *ctx) {
     WindowPoll *poll = ctx;
 
     uint64_t identity;
-    if (mc_wm_window_get_identity(window, &identity) == MCE_OK) {
-        IdentityList *grown = MC_VECTOR_PUSHN(poll->seen, 1, (&identity));
-        if (grown != NULL) {
-            poll->seen = grown;
-        }
-
-        if (poll->fire && !identity_in(known_windows, identity)) {
-            emit_window_event(identity, WM_WINDOW_CREATED);
-        }
+    if (mc_wm_window_get_identity(window, &identity) != MCE_OK) {
+        mc_wm_window_unref(window);
+        return MCE_OK;
     }
 
-    mc_wm_window_unref(window);
+    IdentityList *grown = MC_VECTOR_PUSHN(poll->seen, 1, (&identity));
+    if (grown != NULL) {
+        poll->seen = grown;
+    }
+
+    if (find_window(identity) != NULL) {
+        mc_wm_window_unref(window);
+        return MCE_OK;
+    }
+
+    register_window_ref(identity, window, true);
+    if (poll->fire) {
+        emit_window_event(identity, WM_WINDOW_CREATED);
+    }
+
     return MCE_OK;
 }
 
@@ -384,16 +412,16 @@ static void poll_windows(bool fire) {
     mc_wm_get_all_windows(mc_wm_get_ref(input), window_visit, &poll);
 
     if (fire) {
-        uint64_t *it;
-        MC_VECTOR_EACH(known_windows, it) {
-            if (!identity_in(poll.seen, *it)) {
-                emit_window_event(*it, WM_WINDOW_DESTROYED);
+        size_t count = MC_VECTOR_SIZE(windows);
+        for (size_t i = 0; i < count; i++) {
+            uint64_t identity = MC_VECTOR_DATA(windows)[i].identity;
+            if (!identity_in(poll.seen, identity)) {
+                emit_window_event(identity, WM_WINDOW_DESTROYED);
             }
         }
     }
 
-    MC_VECTOR_FREE(known_windows);
-    known_windows = poll.seen;
+    MC_VECTOR_FREE(poll.seen);
 }
 
 static void target_window_sink(void *ctx, uint64_t handle, WM_WindowChange change) {
@@ -403,28 +431,52 @@ static void target_window_sink(void *ctx, uint64_t handle, WM_WindowChange chang
         return;
     }
 
-    if (change == WM_WINDOW_FOCUSED) {
+    switch (change) {
+    case WM_WINDOW_OPENED:
+        register_window(handle, false);
+        return;
+
+    case WM_WINDOW_CREATED: {
+        RegisteredWindow *w = find_window(handle);
+        if (w == NULL) {
+            register_window(handle, true);
+        } else if (!w->known) {
+            w->known = true;
+        } else {
+            return;
+        }
+
+        emit_window_event(handle, WM_WINDOW_CREATED);
+        return;
+    }
+
+    case WM_WINDOW_DESTROYED: {
+        RegisteredWindow *w = find_window(handle);
+        if (w == NULL) {
+            return;
+        }
+
+        if (w->known) {
+            emit_window_event(handle, WM_WINDOW_DESTROYED);
+        } else {
+            unregister_window(handle);
+        }
+        return;
+    }
+
+    case WM_WINDOW_FOCUSED:
         if (handle == focused_window) {
             return;
         }
         focused_window = handle;
 
-        emit_window_event(handle, change);
+        register_window(handle, false);
+        emit_window_event(handle, WM_WINDOW_FOCUSED);
+        return;
+
+    default:
         return;
     }
-
-    if (change == WM_WINDOW_CREATED) {
-        if (identity_in(known_windows, handle)) {
-            return;
-        }
-        known_add(handle);
-    } else {
-        if (!known_forget(handle)) {
-            return;
-        }
-    }
-
-    emit_window_event(handle, change);
 }
 
 WM_Error wm_window_watch_ensure(void) {
@@ -457,11 +509,7 @@ bool wm_should_run(void) {
     return input_loop || window_watch;
 }
 
-void wm_process_event(const MC_WMEvent *event) {
-    if (event == NULL) {
-        return;
-    }
-
+static void process_keybinds(const MC_WMEvent *event) {
     MC_Key key;
     bool down;
     if (event->type == MC_WME_GLOBAL_KEY_DOWN) {
@@ -497,16 +545,26 @@ void wm_process_event(const MC_WMEvent *event) {
     }
 }
 
-void wm_tick(void) {
-    if (live_windows != NULL) {
-        MC_WindowRef **it;
-        MC_VECTOR_EACH(live_windows, it) {
-            mc_wm_window_unref(*it);
-        }
-        MC_VECTOR_FREE(live_windows);
-        live_windows = NULL;
+static void release_destroyed_window(const MC_WMEvent *event) {
+    if (event->type != wm_uniwm_event_type(WM_UNIWM_WINDOW_DESTROYED)) {
+        return;
     }
 
+    uint64_t identity = mc_json_object_as_u64((MC_Json*)event->as.raw, "window");
+    unregister_window(identity);
+}
+
+void wm_process_event(const MC_WMEvent *event) {
+    if (event == NULL) {
+        return;
+    }
+
+    process_keybinds(event);
+
+    release_destroyed_window(event);
+}
+
+void wm_tick(void) {
     if (window_poll && window_poll_tick % WINDOW_POLL_TICKS == 0) {
         poll_windows(true);
     }
