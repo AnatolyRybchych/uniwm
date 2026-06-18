@@ -1,4 +1,4 @@
-local uniwm = require("libuniwm")
+local uniwm = require("uniwm")
 local mcwm = require("mc.wm")
 
 local wm = mcwm.resolve()

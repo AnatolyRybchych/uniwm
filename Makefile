@@ -8,6 +8,7 @@ TARGET := $(PLATFORM)
 
 BUILDDIR := build
 BINDIR   := bin
+PREFIX   ?= /usr/local
 
 MC_REPO   := https://github.com/AnatolyRybchych/c.git
 MC_BRANCH := main
@@ -47,6 +48,8 @@ UNIWMWIN        := $(BINDIR)/uniwm-windows.dll
 UNIWMWIN_IMP    := $(BUILDDIR)/uniwm-windows.dll.a
 BIN             := $(BINDIR)/uniwm.exe
 
+LIBUNIWM_LUA_PROXY := lua/uniwm.lua
+
 LIBUNIWM_SRC    := $(wildcard $(LIBUNIWM_DIR)/src/*.c)
 LIBUNIWMLUA_SRC := $(wildcard $(LIBUNIWMLUA_DIR)/src/*.c)
 UNIWMWIN_SRC    := $(wildcard $(UNIWMWIN_DIR)/src/*.c)
@@ -63,7 +66,7 @@ vpath %.c $(LIBUNIWM_DIR)/src $(LIBUNIWMLUA_DIR)/src $(WMLUA_DIR)/src $(UNIWMWIN
 
 include rules.mk
 
-.PHONY: all clean
+.PHONY: all clean install
 all: $(BIN)
 
 $(UNIWMWIN_OBJ): CFLAGS += -DUNIWM_WINDOWS_BUILD
@@ -81,8 +84,8 @@ $(UNIWMWIN): $(UNIWMWIN_OBJ) $(MC_LIBS) | $(BINDIR)
 
 $(UNIWMWIN_IMP): $(UNIWMWIN) ;
 
-$(LIBUNIWMLUA): $(LIBUNIWMLUA_OBJ) $(WMLUA_OBJ) $(LIBUNIWM_IMP) $(LUA_IMP) | $(BINDIR)
-	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWMLUA_OBJ) $(WMLUA_OBJ) $(LIBUNIWM_IMP) $(LUA_IMP) -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWMLUA_IMP)
+$(LIBUNIWMLUA): $(LIBUNIWMLUA_OBJ) $(WMLUA_OBJ) $(LIBUNIWM_IMP) $(UNIWMWIN_IMP) $(LUA_IMP) | $(BINDIR)
+	$(LD) -shared $(CFLAGS) -o $@ $(LIBUNIWMLUA_OBJ) $(WMLUA_OBJ) $(LIBUNIWM_IMP) $(UNIWMWIN_IMP) $(LUA_IMP) -Wl,--export-all-symbols -Wl,--out-implib,$(LIBUNIWMLUA_IMP)
 
 $(LIBUNIWMLUA_IMP): $(LIBUNIWMLUA) ;
 
@@ -114,6 +117,12 @@ $(MC_STAMP):
 
 $(BUILDDIR) $(BINDIR):
 	$(MKDIR) $@
+
+install: all
+	-$(MKDIR) "$(subst /,\,$(PREFIX)/share/lua)"
+	-$(MKDIR) "$(subst /,\,$(PREFIX)/lib)"
+	$(CP) "$(subst /,\,$(LIBUNIWM_LUA_PROXY))" "$(subst /,\,$(PREFIX)/share/lua)"
+	$(CP) "$(subst /,\,$(BINDIR))\*.dll" "$(subst /,\,$(PREFIX)/lib)"
 
 clean:
 	-$(RM) $(BUILDDIR)

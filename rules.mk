@@ -4,6 +4,7 @@ ifeq ($(PLATFORM),windows)
     AR    := ar
     MKDIR := mkdir
     RM    := rmdir /s /q
+    CP    := copy /y
     GIT   := git
     TOUCH := type nul >
 else
