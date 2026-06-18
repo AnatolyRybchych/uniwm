@@ -244,18 +244,17 @@ WM_Error wm_unbind_key(WM *wm, const WM_KeyCombo *combo, void **out_ctx) {
         return WM_ERROR_INVALID_ARGUMENT;
     }
 
-    if (out_ctx) {
-        *out_ctx = NULL;
-    }
-
+    void *ctx_found = NULL;
     for (int j = 0; j < keybind.count; j++) {
         if (combo_eq(&keybind.binds[j].combo, combo)) {
-            if (out_ctx) {
-                *out_ctx = keybind.binds[j].ctx;
-            }
+            ctx_found = keybind.binds[j].ctx;
             keybind.binds[j] = keybind.binds[--keybind.count];
             break;
         }
+    }
+    
+    if (out_ctx) {
+        *out_ctx = ctx_found;
     }
 
     return WM_ERROR_OK;
