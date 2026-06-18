@@ -75,7 +75,7 @@ local function layout_vdesk (desktop, managed)
 end
 
 wm:on_event("UNIWM.VDESKTOP_CHANGED", function (event)
-    layout_vdesk(uniwm.vdesktop:current(), event.data.source)
+    layout_vdesk(uniwm.vdesktop:current(), event.source)
 end)
 
 layout_vdesk(uniwm.vdesktop:current(), "managed")
@@ -124,31 +124,9 @@ for i = 1, 10 do
     end
 end
 
-wm:on_event("UNIWM.WINDOW_CREATED", function (event)
-    local window = uniwm.window(event.data.window)
-    if window then
-        print("created: " .. window:get_title())
-    end
-end)
-
-wm:on_event("UNIWM.WINDOW_DESTROYED", function (event)
-    print(string.format("destroyed: 0x%x", event.data.window))
-end)
-
-wm:on_event("UNIWM.WINDOW_FOCUSED", function (event)
-    local window = uniwm.window(event.data.window)
-    if window then
-        print("focused: " .. window:get_title())
-    end
-end)
-
 wm:register_events("DEMO", {
     { name = "PING" },
 })
-
-wm:on_event("DEMO.PING", function (event)
-    dump(event)
-end)
 
 local pings = 0
 uniwm.supress_key("SUPER_L + SHIFT_L + P")
@@ -164,5 +142,8 @@ end)
 
 wm:on_event(nil, function (event)
     dump(event)
+    if event.window then
+        print(event.window:get_title())
+    end
 end)
 
