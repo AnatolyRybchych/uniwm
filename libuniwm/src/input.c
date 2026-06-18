@@ -34,18 +34,29 @@ typedef struct RegisteredWindow {
 
 MC_DEFINE_VECTOR(WindowList, RegisteredWindow);
 
-static MC_WM *input = NULL;
-static bool input_loop = false;
-static WM_KeyCombo suppressions[SUPPRESS_MAX];
-static int suppression_count = 0;
-static Keybind keybinds[KEYBIND_MAX];
-static int keybind_count = 0;
-static bool suppress_down[MC_KEY_MAX];
-static bool keybind_down[MC_KEY_MAX];
-static bool window_watch = false;
-static bool window_poll = false;
-static WindowList *windows = NULL;
-static uint64_t focused_window = 0;
+static struct {
+    MC_WM *wm;
+    bool loop;
+} input_wm;
+
+static struct {
+    WM_KeyCombo combos[SUPPRESS_MAX];
+    int count;
+    bool down[MC_KEY_MAX];
+} suppress;
+
+static struct {
+    Keybind binds[KEYBIND_MAX];
+    int count;
+    bool down[MC_KEY_MAX];
+} keybind;
+
+static struct {
+    bool active;
+    bool poll;
+    WindowList *list;
+    uint64_t focused;
+} watch;
 
 static MC_WMEventType uniwm_event_offset = MC_WME_NONE;
 static unsigned window_poll_tick = 0;
@@ -83,11 +94,11 @@ static bool suppress_cb(MC_TargetWM *tw, MC_Key key, bool down) {
     (void)tw;
 
     if (key < MC_KEY_MAX) {
-        suppress_down[key] = down;
+        suppress.down[key] = down;
     }
 
-    for (int i = 0; i < suppression_count; i++) {
-        if (combo_triggered(key, &suppressions[i], suppress_down)) {
+    for (int i = 0; i < suppress.count; i++) {
+        if (combo_triggered(key, &suppress.combos[i], suppress.down)) {
             return true;
         }
     }
@@ -123,16 +134,16 @@ static MC_Error uniwm_event_to_json(MC_Alloc *alloc, const MC_WMEvent *event, MC
 }
 
 WM_Error wm_input_ensure(void) {
-    if (input != NULL) {
+    if (input_wm.wm != NULL) {
         return WM_ERROR_OK;
     }
 
-    if (mc_wm_init(&input, mc_win32_wm_vtab) != MCE_OK) {
-        input = NULL;
+    if (mc_wm_init(&input_wm.wm, mc_win32_wm_vtab) != MCE_OK) {
+        input_wm.wm = NULL;
         return WM_ERROR_UNKNOWN;
     }
 
-    mc_wm_win32_set_keyboard_suppress(mc_wm_get_target(mc_wm_get_ref(input)), suppress_cb);
+    mc_wm_win32_set_keyboard_suppress(mc_wm_get_target(mc_wm_get_ref(input_wm.wm)), suppress_cb);
 
     static const MC_WMEventDefinition uniwm_events[WM_UNIWM_EVENT_COUNT] = {
         [WM_UNIWM_VDESKTOP_CHANGED] = { .name = "VDESKTOP_CHANGED" },
@@ -148,13 +159,13 @@ WM_Error wm_input_ensure(void) {
         .to_json = uniwm_event_to_json,
         .from_json = NULL,
     };
-    mc_wm_register_event_group(mc_wm_get_ref(input), &uniwm_group, &uniwm_event_offset);
+    mc_wm_register_event_group(mc_wm_get_ref(input_wm.wm), &uniwm_group, &uniwm_event_offset);
 
     return WM_ERROR_OK;
 }
 
 MC_WM *wm_input(void) {
-    return input;
+    return input_wm.wm;
 }
 
 MC_WMEventType wm_uniwm_event_type(WM_UniwmEvent which) {
@@ -171,8 +182,8 @@ static WM_Error enable_keyboard(void) {
         return e;
     }
 
-    mc_wm_request_events(mc_wm_get_ref(input), MC_WM_EVENTS_GLOBAL_KEYBOARD);
-    input_loop = true;
+    mc_wm_request_events(mc_wm_get_ref(input_wm.wm), MC_WM_EVENTS_GLOBAL_KEYBOARD);
+    input_wm.loop = true;
 
     return WM_ERROR_OK;
 }
@@ -189,10 +200,10 @@ WM_Error wm_suppress_key(WM *wm, const WM_KeyCombo *combo) {
         return e;
     }
 
-    if (suppression_count >= SUPPRESS_MAX) {
+    if (suppress.count >= SUPPRESS_MAX) {
         return WM_ERROR_OUT_OF_MEMORY;
     }
-    suppressions[suppression_count++] = *combo;
+    suppress.combos[suppress.count++] = *combo;
 
     return WM_ERROR_OK;
 }
@@ -204,9 +215,9 @@ WM_Error wm_unsuppress_key(WM *wm, const WM_KeyCombo *combo) {
         return WM_ERROR_INVALID_ARGUMENT;
     }
 
-    for (int j = 0; j < suppression_count;) {
-        if (combo_eq(&suppressions[j], combo)) {
-            suppressions[j] = suppressions[--suppression_count];
+    for (int j = 0; j < suppress.count;) {
+        if (combo_eq(&suppress.combos[j], combo)) {
+            suppress.combos[j] = suppress.combos[--suppress.count];
         } else {
             j++;
         }
@@ -227,10 +238,10 @@ WM_Error wm_bind_key(WM *wm, const WM_KeyCombo *combo, void (*cb)(void *ctx), vo
         return e;
     }
 
-    if (keybind_count >= KEYBIND_MAX) {
+    if (keybind.count >= KEYBIND_MAX) {
         return WM_ERROR_OUT_OF_MEMORY;
     }
-    keybinds[keybind_count++] = (Keybind){ .combo = *combo, .cb = cb, .ctx = ctx };
+    keybind.binds[keybind.count++] = (Keybind){ .combo = *combo, .cb = cb, .ctx = ctx };
 
     return WM_ERROR_OK;
 }
@@ -246,12 +257,12 @@ WM_Error wm_unbind_key(WM *wm, const WM_KeyCombo *combo, void **out_ctx) {
         *out_ctx = NULL;
     }
 
-    for (int j = 0; j < keybind_count; j++) {
-        if (combo_eq(&keybinds[j].combo, combo)) {
+    for (int j = 0; j < keybind.count; j++) {
+        if (combo_eq(&keybind.binds[j].combo, combo)) {
             if (out_ctx) {
-                *out_ctx = keybinds[j].ctx;
+                *out_ctx = keybind.binds[j].ctx;
             }
-            keybinds[j] = keybinds[--keybind_count];
+            keybind.binds[j] = keybind.binds[--keybind.count];
             break;
         }
     }
@@ -275,10 +286,10 @@ static bool identity_in(const IdentityList *list, uint64_t identity) {
 }
 
 static RegisteredWindow *find_window(uint64_t identity) {
-    size_t count = MC_VECTOR_SIZE(windows);
+    size_t count = MC_VECTOR_SIZE(watch.list);
     for (size_t i = 0; i < count; i++) {
-        if (MC_VECTOR_DATA(windows)[i].identity == identity) {
-            return &MC_VECTOR_DATA(windows)[i];
+        if (MC_VECTOR_DATA(watch.list)[i].identity == identity) {
+            return &MC_VECTOR_DATA(watch.list)[i];
         }
     }
 
@@ -287,9 +298,9 @@ static RegisteredWindow *find_window(uint64_t identity) {
 
 static void register_window_ref(uint64_t identity, MC_WindowRef *window, bool known) {
     RegisteredWindow entry = { .identity = identity, .window = window, .known = known };
-    WindowList *grown = MC_VECTOR_PUSHN(windows, 1, (&entry));
+    WindowList *grown = MC_VECTOR_PUSHN(watch.list, 1, (&entry));
     if (grown != NULL) {
-        windows = grown;
+        watch.list = grown;
     } else {
         mc_wm_window_unref(window);
     }
@@ -307,11 +318,11 @@ static void register_window(uint64_t identity, bool known) {
 }
 
 static void unregister_window(uint64_t identity) {
-    size_t count = MC_VECTOR_SIZE(windows);
+    size_t count = MC_VECTOR_SIZE(watch.list);
     for (size_t i = 0; i < count; i++) {
-        if (MC_VECTOR_DATA(windows)[i].identity == identity) {
-            mc_wm_window_unref(MC_VECTOR_DATA(windows)[i].window);
-            MC_VECTOR_ERASE(windows, i, 1);
+        if (MC_VECTOR_DATA(watch.list)[i].identity == identity) {
+            mc_wm_window_unref(MC_VECTOR_DATA(watch.list)[i].window);
+            MC_VECTOR_ERASE(watch.list, i, 1);
             return;
         }
     }
@@ -332,11 +343,11 @@ static WM_UniwmEvent uniwm_event_of(WM_WindowChange change) {
 
 static void emit_window_event(uint64_t identity, WM_WindowChange change) {
     MC_WMEventType type = wm_uniwm_event_type(uniwm_event_of(change));
-    if (input == NULL || type == MC_WME_NONE) {
+    if (input_wm.wm == NULL || type == MC_WME_NONE) {
         return;
     }
 
-    MC_WMRef *ref = mc_wm_get_ref(input);
+    MC_WMRef *ref = mc_wm_get_ref(input_wm.wm);
     MC_WMEvent event;
     if (mc_wm_event(ref, type, &event) != MCE_OK) {
         return;
@@ -362,7 +373,7 @@ WM_Error wm_resolve_window(uint64_t identity, MC_WindowRef **out) {
         return WM_ERROR_UNKNOWN;
     }
 
-    MC_WMRef *ref = mc_wm_get_ref(input);
+    MC_WMRef *ref = mc_wm_get_ref(input_wm.wm);
 
     uint64_t resolved;
     if (mc_wm_win32_identity_from_hwnd(mc_wm_get_target(ref), (HWND)(uintptr_t)identity, &resolved) != MCE_OK) {
@@ -409,17 +420,17 @@ static MC_Error window_visit(MC_WindowRef *window, void *ctx) {
 }
 
 static void poll_windows(bool fire) {
-    if (input == NULL) {
+    if (input_wm.wm == NULL) {
         return;
     }
 
     WindowPoll poll = { .seen = NULL, .fire = fire };
-    mc_wm_get_all_windows(mc_wm_get_ref(input), window_visit, &poll);
+    mc_wm_get_all_windows(mc_wm_get_ref(input_wm.wm), window_visit, &poll);
 
     if (fire) {
-        size_t count = MC_VECTOR_SIZE(windows);
+        size_t count = MC_VECTOR_SIZE(watch.list);
         for (size_t i = 0; i < count; i++) {
-            uint64_t identity = MC_VECTOR_DATA(windows)[i].identity;
+            uint64_t identity = MC_VECTOR_DATA(watch.list)[i].identity;
             if (!identity_in(poll.seen, identity)) {
                 emit_window_event(identity, WM_WINDOW_DESTROYED);
             }
@@ -432,7 +443,7 @@ static void poll_windows(bool fire) {
 static void target_window_sink(void *ctx, uint64_t handle, WM_WindowChange change) {
     (void)ctx;
 
-    if (input == NULL) {
+    if (input_wm.wm == NULL) {
         return;
     }
 
@@ -470,10 +481,10 @@ static void target_window_sink(void *ctx, uint64_t handle, WM_WindowChange chang
     }
 
     case WM_WINDOW_FOCUSED:
-        if (handle == focused_window) {
+        if (handle == watch.focused) {
             return;
         }
-        focused_window = handle;
+        watch.focused = handle;
 
         register_window(handle, false);
         emit_window_event(handle, WM_WINDOW_FOCUSED);
@@ -485,7 +496,7 @@ static void target_window_sink(void *ctx, uint64_t handle, WM_WindowChange chang
 }
 
 WM_Error wm_window_watch_ensure(void) {
-    if (window_watch) {
+    if (watch.active) {
         return WM_ERROR_OK;
     }
 
@@ -494,7 +505,7 @@ WM_Error wm_window_watch_ensure(void) {
         return e;
     }
 
-    window_watch = true;
+    watch.active = true;
     poll_windows(false);
 
     WM *wm = wm_process();
@@ -504,14 +515,14 @@ WM_Error wm_window_watch_ensure(void) {
         && wm->target_interface->on_window_changed(wm->target, target_window_sink, NULL) == WM_ERROR_OK;
 
     if (!reactive) {
-        window_poll = true;
+        watch.poll = true;
     }
 
     return WM_ERROR_OK;
 }
 
 bool wm_should_run(void) {
-    return input_loop || window_watch;
+    return input_wm.loop || watch.active;
 }
 
 static void process_keybinds(const MC_WMEvent *event) {
@@ -527,9 +538,9 @@ static void process_keybinds(const MC_WMEvent *event) {
         return;
     }
 
-    bool was_down = key < MC_KEY_MAX && keybind_down[key];
+    bool was_down = key < MC_KEY_MAX && keybind.down[key];
     if (key < MC_KEY_MAX) {
-        keybind_down[key] = down;
+        keybind.down[key] = down;
     }
 
     if (!down || was_down) {
@@ -537,15 +548,15 @@ static void process_keybinds(const MC_WMEvent *event) {
     }
 
     size_t best = 0;
-    for (int i = 0; i < keybind_count; i++) {
-        if (combo_triggered(key, &keybinds[i].combo, keybind_down) && keybinds[i].combo.count > best) {
-            best = keybinds[i].combo.count;
+    for (int i = 0; i < keybind.count; i++) {
+        if (combo_triggered(key, &keybind.binds[i].combo, keybind.down) && keybind.binds[i].combo.count > best) {
+            best = keybind.binds[i].combo.count;
         }
     }
 
-    for (int i = 0; i < keybind_count; i++) {
-        if (keybinds[i].combo.count == best && combo_triggered(key, &keybinds[i].combo, keybind_down)) {
-            keybinds[i].cb(keybinds[i].ctx);
+    for (int i = 0; i < keybind.count; i++) {
+        if (keybind.binds[i].combo.count == best && combo_triggered(key, &keybind.binds[i].combo, keybind.down)) {
+            keybind.binds[i].cb(keybind.binds[i].ctx);
         }
     }
 }
@@ -555,7 +566,7 @@ static void release_destroyed_window(const MC_WMEvent *event) {
         return;
     }
 
-    uint64_t identity = mc_json_object_as_u64((MC_Json*)event->as.raw, "window_id");
+    uint64_t identity = mc_json_object_as_u64((MC_Json*)event->as.raw, "window");
     unregister_window(identity);
 }
 
@@ -570,7 +581,7 @@ void wm_process_event(const MC_WMEvent *event) {
 }
 
 void wm_tick(void) {
-    if (window_poll && window_poll_tick % WINDOW_POLL_TICKS == 0) {
+    if (watch.poll && window_poll_tick % WINDOW_POLL_TICKS == 0) {
         poll_windows(true);
     }
     window_poll_tick++;
