@@ -25,6 +25,7 @@ typedef struct Keybind {
 } Keybind;
 
 MC_DEFINE_VECTOR(IdentityList, uint64_t);
+MC_DEFINE_VECTOR(WindowRefList, MC_WindowRef*);
 
 static MC_WM *input = NULL;
 static bool input_loop = false;
@@ -38,6 +39,7 @@ static bool window_watch = false;
 static bool window_poll = false;
 static IdentityList *known_windows = NULL;
 static uint64_t focused_window = 0;
+static WindowRefList *live_windows = NULL;
 
 static MC_WMEventType uniwm_event_offset = MC_WME_NONE;
 static unsigned window_poll_tick = 0;
@@ -87,6 +89,33 @@ static bool suppress_cb(MC_TargetWM *tw, MC_Key key, bool down) {
     return false;
 }
 
+static MC_Error uniwm_event_to_json(MC_Alloc *alloc, const MC_WMEvent *event, MC_Json *out) {
+    (void)alloc;
+
+    MC_Json *raw = (MC_Json*)event->as.raw;
+    size_t n = mc_json_length(raw);
+    for (size_t i = 0; i < n; i++) {
+        MC_Str key;
+        MC_Json *value;
+        if (mc_json_object_at(raw, i, &key, &value) != MCE_OK) {
+            continue;
+        }
+
+        MC_Json *member;
+        MC_Error e = mc_json_object_add_new(out, &member, "%.*s", (int)MC_STR_LEN(key), key.beg);
+        if (e != MCE_OK) {
+            return e;
+        }
+
+        e = mc_json_copy(member, value);
+        if (e != MCE_OK) {
+            return e;
+        }
+    }
+
+    return MCE_OK;
+}
+
 WM_Error wm_input_ensure(void) {
     if (input != NULL) {
         return WM_ERROR_OK;
@@ -110,7 +139,7 @@ WM_Error wm_input_ensure(void) {
         .events = uniwm_events,
         .size = WM_UNIWM_EVENT_COUNT,
         .reserve = 0,
-        .to_json = NULL,
+        .to_json = uniwm_event_to_json,
         .from_json = NULL,
     };
     mc_wm_register_event_group(mc_wm_get_ref(input), &uniwm_group, &uniwm_event_offset);
@@ -287,6 +316,16 @@ static void emit_window_event(uint64_t identity, WM_WindowChange change) {
     mc_json_object_add_u64((MC_Json*)event.as.raw, identity, "window");
 
     mc_wm_push_event(ref, &event);
+
+    MC_WindowRef *window = NULL;
+    if (wm_resolve_window(identity, &window) == WM_ERROR_OK) {
+        WindowRefList *grown = MC_VECTOR_PUSHN(live_windows, 1, (&window));
+        if (grown != NULL) {
+            live_windows = grown;
+        } else {
+            mc_wm_window_unref(window);
+        }
+    }
 }
 
 WM_Error wm_resolve_window(uint64_t identity, MC_WindowRef **out) {
@@ -459,6 +498,15 @@ void wm_process_event(const MC_WMEvent *event) {
 }
 
 void wm_tick(void) {
+    if (live_windows != NULL) {
+        MC_WindowRef **it;
+        MC_VECTOR_EACH(live_windows, it) {
+            mc_wm_window_unref(*it);
+        }
+        MC_VECTOR_FREE(live_windows);
+        live_windows = NULL;
+    }
+
     if (window_poll && window_poll_tick % WINDOW_POLL_TICKS == 0) {
         poll_windows(true);
     }
